@@ -1,3 +1,5 @@
+jdk:
+  - openjdk17
+
 install:
-  tasks:
-    - ":libpackage:publishToMavenLocal"
+  - ./gradlew :libpackage:publishToMavenLocal
