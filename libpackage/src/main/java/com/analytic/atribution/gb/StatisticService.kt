@@ -108,32 +108,6 @@ internal class StatisticService(private val context: Context) {
             eventReceiver, IntentFilter("analytic.event")
         )
 
-        (context as Application).registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
-            private var activityCount = 0
-
-            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
-
-            override fun onActivityStarted(activity: Activity) {
-                activityCount++
-            }
-
-            override fun onActivityResumed(activity: Activity) {}
-
-            override fun onActivityPaused(activity: Activity) {}
-
-            override fun onActivityStopped(activity: Activity) {
-                activityCount--
-                if (activityCount == 0) {
-                    Log.i(Constants.LOG_TAG, "Application goes to background, flushing events")
-                    runBlocking { eventQueue?.flush(0) }
-                }
-            }
-
-            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
-
-            override fun onActivityDestroyed(activity: Activity) {}
-        })
-
         Handler(Looper.getMainLooper()).post {
             val prefs: SharedPreferences = sharedPreferences(context)
 
