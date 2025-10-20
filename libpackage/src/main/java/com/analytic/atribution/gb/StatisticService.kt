@@ -253,7 +253,7 @@ internal class StatisticService(private val context: Context) {
                     currentData.toJson().toString()
                 ) {
                     saveData(SAVED_DATA_KEY, currentData)
-                    Log.i(Constants.LOG_TAG, "User data updated")
+                    Log.i(Constants.LOG_TAG, "User data updated. User ID: $analyticAppID")
                 }
             } catch (e: Exception) {
                 Log.e(Constants.LOG_TAG, "First http request failed, retry...", e)
@@ -263,7 +263,7 @@ internal class StatisticService(private val context: Context) {
                     currentData.toJson().toString()
                 ) {
                     saveData(SAVED_DATA_KEY, currentData)
-                    Log.i(Constants.LOG_TAG, "User data updated")
+                    Log.i(Constants.LOG_TAG, "User data updated. User ID: $analyticAppID")
                 }
             }
         }
