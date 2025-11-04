@@ -217,6 +217,7 @@ internal class StatisticService(private val context: Context) {
         currentData.appLastUpdateTimestamp = getLastUpdateTimestamp(context)
         currentData.geo = getCountryCode(context)
         currentData.osVersion = Build.VERSION.RELEASE
+        currentData.device = Build.DEVICE
         currentData.deviceModel = Build.MODEL
         val (appVersionCode, appVersion) = getAppVersion(context)
         currentData.appVersionCode = appVersionCode

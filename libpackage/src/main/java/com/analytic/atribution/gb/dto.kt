@@ -30,6 +30,7 @@ internal class AppInstanceData(
     var gclid: String? = null,
     var geo: String? = null,
     var osVersion: String? = null,
+    var device: String? = null,
     var deviceModel: String? = null,
     var appVersion: String? = null,
     var referrer: String? = null,
@@ -54,6 +55,7 @@ internal class AppInstanceData(
                 gclid = json.getOrNull("gclid"),
                 geo = json.getOrNull("geo"),
                 osVersion = json.getOrNull("os_version"),
+                device = json.getOrNull("device"),
                 deviceModel = json.getOrNull("device_model"),
                 appVersion = json.getOrNull("app_version"),
                 referrer = json.getOrNull("referrer"),
@@ -80,6 +82,7 @@ internal class AppInstanceData(
         jsonObject.put("gclid", gclid)
         jsonObject.put("geo", geo)
         jsonObject.put("os_version", osVersion)
+        jsonObject.put("device", device)
         jsonObject.put("device_model", deviceModel)
         jsonObject.put("app_version", appVersion)
         jsonObject.put("referrer", referrer)
