@@ -1,6 +1,9 @@
 package com.analytic.atribution.gb
 
-internal class StatisticServerAPI(private val host: String) {
+internal class StatisticServerAPI(
+    private val host: String,
+    private val secure: Boolean,
+) {
     // Use this IP to access localhost from AVD (and maybe other virtual devices)
     // "10.0.2.2"
     private companion object {
@@ -8,7 +11,8 @@ internal class StatisticServerAPI(private val host: String) {
     }
 
     private fun createURL(path: String): String {
-        return "http://$host/$API_VERSION${if (path.startsWith("/")) path else "/$path"}"
+        val protocol = if (secure) "https" else "http"
+        return "$protocol://$host/$API_VERSION${if (path.startsWith("/")) path else "/$path"}"
     }
 
     suspend fun makeRequest(

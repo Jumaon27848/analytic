@@ -21,9 +21,9 @@ object GPAnalytic {
      *
      * @param host Hostname of the server. For example: `analytic.com`, `127.0.0.1`.
      */
-    fun setHost(host: String) {
+    fun setHost(host: String, secure: Boolean = false) {
         scope.launch {
-            Locator.resolve<StatisticService>().setHost(host)
+            Locator.resolve<StatisticService>().setHost(host, secure)
         }
     }
 

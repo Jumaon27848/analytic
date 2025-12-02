@@ -34,6 +34,7 @@ internal class StatisticService(private val context: Context) {
         const val SAVED_DATA_KEY = "data.saved"
         const val CURRENT_DATA_KEY = "data.current"
         const val HOSTNAME_KEY = "hostname"
+        const val SECURE_KEY = "secure"
         val semaphore = Semaphore(1)
     }
 
@@ -80,8 +81,12 @@ internal class StatisticService(private val context: Context) {
         }
     }
 
-    fun setHost(host: String) {
-        sharedPreferences(context).edit().putString(HOSTNAME_KEY, host).apply()
+    fun setHost(host: String, secure: Boolean) {
+        sharedPreferences(context)
+            .edit()
+            .putBoolean(SECURE_KEY, secure)
+            .putString(HOSTNAME_KEY, host)
+            .apply()
     }
 
     fun enqueueEvent(event: Event) {
@@ -130,7 +135,7 @@ internal class StatisticService(private val context: Context) {
                     return@launch
                 }
 
-                val api = StatisticServerAPI(host)
+                val api = StatisticServerAPI(host, prefs.getBoolean(SECURE_KEY, false))
 
                 eventQueue = EventQueue(
                     context,
