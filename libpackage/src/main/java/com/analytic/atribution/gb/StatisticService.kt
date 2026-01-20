@@ -1,8 +1,5 @@
 package com.analytic.atribution.gb
 
-import android.app.Activity
-import android.app.Application
-import android.app.Application.ActivityLifecycleCallbacks
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -19,7 +16,6 @@ import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.tasks.await
@@ -35,6 +31,8 @@ internal class StatisticService(private val context: Context) {
         const val CURRENT_DATA_KEY = "data.current"
         const val HOSTNAME_KEY = "hostname"
         const val SECURE_KEY = "secure"
+        const val AFFISE_CLICK_ID_KEY = "affise_click_id"
+        const val AFFISE_PROMO_CODE_KEY = "affise_promo_code"
         val semaphore = Semaphore(1)
     }
 
@@ -42,6 +40,7 @@ internal class StatisticService(private val context: Context) {
     private val initialized = CompletableDeferred<Unit>()
     private val workerKey = "worker_enqueued"
     private val eventLightQueue = mutableListOf<Event>()
+    private var api: StatisticServerAPI? = null
     private var eventQueue: EventQueue? = null
     private val eventReceiver : BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -87,6 +86,17 @@ internal class StatisticService(private val context: Context) {
             .putBoolean(SECURE_KEY, secure)
             .putString(HOSTNAME_KEY, host)
             .apply()
+    }
+
+    suspend fun setAdditionalUserData(
+        affiseClickId: String? = null,
+        affisePromoCode: String? = null,
+    ) {
+        val editor = sharedPreferences(context).edit()
+        affiseClickId?.let { editor.putString(AFFISE_CLICK_ID_KEY, it) }
+        affisePromoCode?.let { editor.putString(AFFISE_PROMO_CODE_KEY, it) }
+        editor.apply()
+        api?.let { updateAppInstance(it) }
     }
 
     fun enqueueEvent(event: Event) {
@@ -136,6 +146,7 @@ internal class StatisticService(private val context: Context) {
                 }
 
                 val api = StatisticServerAPI(host, prefs.getBoolean(SECURE_KEY, false))
+                this@StatisticService.api = api
 
                 eventQueue = EventQueue(
                     context,
@@ -210,6 +221,7 @@ internal class StatisticService(private val context: Context) {
     }
 
     private suspend fun updateAppInstanceUnsafe(api: StatisticServerAPI) {
+        val preferences = sharedPreferences(context)
         val currentData: AppInstanceData = getData(CURRENT_DATA_KEY)
         val savedData: AppInstanceData = getData(SAVED_DATA_KEY)
 
@@ -234,6 +246,8 @@ internal class StatisticService(private val context: Context) {
         currentData.osVersionInt = Build.VERSION.SDK_INT
         currentData.buildId = Build.ID
         currentData.locale1 = Locale.getDefault().toString()
+        currentData.affiseClickId = preferences.getString(AFFISE_CLICK_ID_KEY, null)
+        currentData.affisePromoCode = preferences.getString(AFFISE_PROMO_CODE_KEY, null)
         if (currentData.referrer == null) currentData.referrer = getInstallReferrer(context)
 
         if (currentData.toJson().toString() == savedData.toJson().toString()) {

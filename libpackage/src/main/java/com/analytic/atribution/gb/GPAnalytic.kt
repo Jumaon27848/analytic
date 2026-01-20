@@ -20,10 +20,29 @@ object GPAnalytic {
      * 5 seconds to call this function, otherwise initialization process will be aborted.
      *
      * @param host Hostname of the server. For example: `analytic.com`, `127.0.0.1`.
+     * @param secure Whether to use secure protocols (https instead of http etc.)
      */
     fun setHost(host: String, secure: Boolean = false) {
         scope.launch {
             Locator.resolve<StatisticService>().setHost(host, secure)
+        }
+    }
+
+    /**
+     * Saves additional data locally and triggers http request if called with new data, so
+     * it's better to provide all additional data in one call if possible.
+     *
+     * Nulls treated as "no value" and will not delete previously set values.
+     */
+    fun setAdditionalUserData(
+        affiseClickId: String? = null,
+        affisePromoCode: String? = null,
+    ) {
+        scope.launch {
+            Locator.resolve<StatisticService>().setAdditionalUserData(
+                affiseClickId = affiseClickId,
+                affisePromoCode = affisePromoCode,
+            )
         }
     }
 
