@@ -33,6 +33,7 @@ internal class StatisticService(private val context: Context) {
         const val SECURE_KEY = "secure"
         const val AFFISE_CLICK_ID_KEY = "affise_click_id"
         const val AFFISE_PROMO_CODE_KEY = "affise_promo_code"
+        const val WEB_CUSTOMER_ID = "web_customer_id"
         val semaphore = Semaphore(1)
     }
 
@@ -91,10 +92,12 @@ internal class StatisticService(private val context: Context) {
     suspend fun setAdditionalUserData(
         affiseClickId: String? = null,
         affisePromoCode: String? = null,
+        webCustomerId: String? = null,
     ) {
         val editor = sharedPreferences(context).edit()
         affiseClickId?.let { editor.putString(AFFISE_CLICK_ID_KEY, it) }
         affisePromoCode?.let { editor.putString(AFFISE_PROMO_CODE_KEY, it) }
+        webCustomerId?.let { editor.putString(WEB_CUSTOMER_ID, it) }
         editor.apply()
         api?.let { updateAppInstance(it) }
     }
@@ -248,6 +251,7 @@ internal class StatisticService(private val context: Context) {
         currentData.locale1 = Locale.getDefault().toString()
         currentData.affiseClickId = preferences.getString(AFFISE_CLICK_ID_KEY, null)
         currentData.affisePromoCode = preferences.getString(AFFISE_PROMO_CODE_KEY, null)
+        currentData.webCustomerId = preferences.getString(WEB_CUSTOMER_ID, null)
         if (currentData.referrer == null) currentData.referrer = getInstallReferrer(context)
 
         if (currentData.toJson().toString() == savedData.toJson().toString()) {

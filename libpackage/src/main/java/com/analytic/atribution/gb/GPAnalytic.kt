@@ -37,11 +37,13 @@ object GPAnalytic {
     fun setAdditionalUserData(
         affiseClickId: String? = null,
         affisePromoCode: String? = null,
+        webCustomerId: String? = null,
     ) {
         scope.launch {
             Locator.resolve<StatisticService>().setAdditionalUserData(
                 affiseClickId = affiseClickId,
                 affisePromoCode = affisePromoCode,
+                webCustomerId = webCustomerId,
             )
         }
     }

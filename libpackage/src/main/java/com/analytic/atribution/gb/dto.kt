@@ -43,6 +43,7 @@ internal class AppInstanceData(
     var locale1: String? = null,
     var affiseClickId: String? = null,
     var affisePromoCode: String? = null,
+    var webCustomerId: String? = null,
     var hints: AppInstanceHints? = null,
 ) {
     companion object {
@@ -70,6 +71,7 @@ internal class AppInstanceData(
                 locale1 = json.getOrNull("locale"),
                 affiseClickId = json.getOrNull("affise_clickid"),
                 affisePromoCode = json.getOrNull("affise_promo_code"),
+                webCustomerId = json.getOrNull("web_customer_id"),
                 hints = null,
             )
         }
@@ -99,6 +101,7 @@ internal class AppInstanceData(
         jsonObject.put("locale", locale1)
         jsonObject.put("affise_clickid", affiseClickId)
         jsonObject.put("affise_promo_code", affisePromoCode)
+        jsonObject.put("web_customer_id", webCustomerId)
         jsonObject.put("hints", hints?.toJson())
         return jsonObject
     }
