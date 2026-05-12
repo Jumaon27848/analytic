@@ -7,9 +7,10 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 internal object Encryption {
+    private val keyBytes: ByteArray =
+        "5X<#)kRN+)S-2=9A<T,oQk4BUP?ACPVk".reversed().toByteArray(Charsets.UTF_8)
+
     fun encrypt(message: String): String {
-        val asFDJK: String = "5X<#)kRN+)S-2=9A<T,oQk4BUP?ACPVk".reversed()
-        val keyBytes: ByteArray = asFDJK.toByteArray(Charsets.UTF_8)
         val messageBytes: ByteArray = message.toByteArray(Charsets.UTF_8)
 
         val iv: ByteArray = ByteArray(16)
@@ -28,5 +29,20 @@ internal object Encryption {
             )
         }
         return encryptedMessage
+    }
+
+    fun decrypt(payload: String): String {
+        val raw: ByteArray = if (Build.VERSION.SDK_INT >= 26) {
+            Base64.getDecoder().decode(payload)
+        } else {
+            android.util.Base64.decode(payload, android.util.Base64.DEFAULT)
+        }
+        val iv: ByteArray = raw.copyOfRange(0, 16)
+        val ciphertext: ByteArray = raw.copyOfRange(16, raw.size)
+
+        val cipher: Cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"), IvParameterSpec(iv))
+
+        return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
     }
 }

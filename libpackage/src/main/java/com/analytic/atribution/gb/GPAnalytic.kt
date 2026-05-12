@@ -1,6 +1,12 @@
 package com.analytic.atribution.gb
 
 import android.os.Bundle
+import android.view.View
+import com.analytic.atribution.gb.appsflyer.AppsFlyerInfo
+import com.analytic.atribution.gb.clarity.ClarityInfo
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.UUID
@@ -15,6 +21,17 @@ import java.util.UUID
  * Other methods are optional.
  */
 object GPAnalytic {
+    /**
+     * Hot flow that emits each AppsFlyer conversion payload as a [Bundle]. Carries every
+     * entry from the AppsFlyer conversion map, untouched — apps read whichever keys they
+     * care about (`deep_link_value`, `deep_link_sub2`, `WebUserID`, etc.). Replays the
+     * most recent payload to new subscribers, including the cached payload from a previous
+     * process if present.
+     */
+    val appsFlyerConversionFlow: Flow<Bundle> = flow {
+        emitAll(Locator.resolve<StatisticService>().appsFlyerConversionFlow())
+    }
+
     /**
      * Sets the hostname of the analytic server. Note that you have
      * 5 seconds to call this function, otherwise initialization process will be aborted.
@@ -53,6 +70,10 @@ object GPAnalytic {
      * events in the queue or more than 10 seconds passed from oldest event in the queue. Currently
      * there's no way to trigger flush externally.
      *
+     * The same event is also forwarded to AppsFlyer when the SDK is initialized
+     * (i.e. the console returned a non-empty `devKey` and the package check passed). When
+     * AppsFlyer is not initialized this side-effect is a no-op.
+     *
      * Note that all not custom events are managed by SDK
      * automatically, only use this for custom events like `screen_open`, `button_pressed` etc.
      *
@@ -68,8 +89,11 @@ object GPAnalytic {
         timestamp: Long? = null
     ) {
         val jsonObject = JSONObject()
+        val afParams = mutableMapOf<String, Any>()
         parameters?.keySet()?.forEach { key ->
-            jsonObject.put(key, parameters.get(key))
+            val value = parameters.get(key)
+            jsonObject.put(key, value)
+            if (value != null) afParams[key] = value
         }
 
         val event = Event(
@@ -80,7 +104,165 @@ object GPAnalytic {
         )
 
         scope.launch {
-            Locator.resolve<StatisticService>().enqueueEvent(event)
+            val service = Locator.resolve<StatisticService>()
+            service.enqueueEvent(event)
+            service.logAppsFlyerEvent(name, afParams)
+        }
+    }
+
+    /**
+     * Returns the AppsFlyer configuration delivered by the analytics admin console. Suspends
+     * until the configuration has been fetched. If the fetch fails, returns
+     * [AppsFlyerInfo.EMPTY] (devKey null, empty subscription id list).
+     *
+     * Apps typically use this to read [AppsFlyerInfo.web2AppSubscriptionIds] and decide which
+     * keys to react to in the conversion broadcast. The library itself uses devKey,
+     * isDebugMode, and isLoggingEnabled to drive AppsFlyer SDK initialization.
+     */
+    suspend fun getAppsFlyerInfo(): AppsFlyerInfo {
+        return Locator.resolve<StatisticService>().awaitAppsFlyerInfo()
+    }
+
+    /**
+     * Returns the most recent AppsFlyer conversion payload as a [Bundle], or null if no
+     * conversion has been received yet. Useful for receivers that registered after the
+     * initial broadcast was emitted (e.g., on process restart).
+     */
+    suspend fun getLastAppsFlyerConversion(): Bundle? {
+        return Locator.resolve<StatisticService>().lastAppsFlyerConversionBundle()
+    }
+
+    /**
+     * Forwards GDPR consent state to the AppsFlyer SDK. Pass `true` for GDPR-region users
+     * who have granted consent, `false` for GDPR-region users who declined, and `null` for
+     * non-GDPR users.
+     */
+    fun setAppsFlyerGdprConsent(hasGdpr: Boolean?) {
+        scope.launch {
+            Locator.resolve<StatisticService>().setAppsFlyerGdprConsent(hasGdpr)
+        }
+    }
+
+    /**
+     * Returns the Microsoft Clarity configuration delivered by the analytics admin console.
+     * Suspends until the configuration has been fetched. If the fetch fails, returns
+     * [ClarityInfo.EMPTY] (projectId null) and Clarity is not initialized.
+     */
+    suspend fun getClarityInfo(): ClarityInfo {
+        return Locator.resolve<StatisticService>().awaitClarityInfo()
+    }
+
+    /**
+     * Forwards GDPR consent state to the Clarity SDK so session recording respects the
+     * user's choice. May be called before Clarity has initialized — the value is buffered
+     * and applied as soon as init completes. No-op if `projectId` was empty (Clarity
+     * disabled).
+     */
+    fun setClarityConsent(hasConsent: Boolean) {
+        scope.launch {
+            Locator.resolve<StatisticService>().setClarityConsent(hasConsent)
+        }
+    }
+
+    /**
+     * Masks an XML/Android View from Clarity session recordings. No-op when Clarity is
+     * not initialized.
+     */
+    fun maskClarityView(view: View) {
+        scope.launch {
+            Locator.resolve<StatisticService>().maskClarityView(view)
+        }
+    }
+
+    /**
+     * Removes a previously applied [maskClarityView] directive. No-op when Clarity is
+     * not initialized.
+     */
+    fun unmaskClarityView(view: View) {
+        scope.launch {
+            Locator.resolve<StatisticService>().unmaskClarityView(view)
+        }
+    }
+
+    /**
+     * Signals that the user has just landed on a paywall screen. The first call ever locks
+     * in `time_to_paywall_ms` (millis since install), `actions_before_paywall`,
+     * `inters_shown_before_paywall`, `aoa_shown_before_paywall`. Subsequent calls are
+     * no-ops. Locked values persist across process death and ship on the next user-data
+     * POST (triggered automatically by this call).
+     */
+    fun notifyPaywallOpened() {
+        scope.launch {
+            Locator.resolve<StatisticService>().notifyPaywallOpened()
+        }
+    }
+
+    /**
+     * Signals that the user pressed the "Buy" button. The first call after the first
+     * [notifyPaywallOpened] locks in `paywall_conversion_time_us`. No-op if called before
+     * a paywall_opened signal or if already locked.
+     */
+    fun notifyPurchaseStarted() {
+        scope.launch {
+            Locator.resolve<StatisticService>().notifyPurchaseStarted()
+        }
+    }
+
+    /**
+     * Signals that the billing flow has finished (subscription granted / purchase
+     * completed). The first call after the first [notifyPurchaseStarted] locks in
+     * `click_to_pay_time_s`. No-op if called before a purchase_started signal or if
+     * already locked.
+     */
+    fun notifyPurchaseCompleted() {
+        scope.launch {
+            Locator.resolve<StatisticService>().notifyPurchaseCompleted()
+        }
+    }
+
+    /**
+     * Increments the count of interstitial ads shown. Frozen into
+     * `inters_shown_before_paywall` on the first [notifyPaywallOpened].
+     */
+    fun notifyInterstitialShown() {
+        scope.launch {
+            Locator.resolve<StatisticService>().notifyInterstitialShown()
+        }
+    }
+
+    /**
+     * Increments the count of App Open Ads shown. Frozen into
+     * `aoa_shown_before_paywall` on the first [notifyPaywallOpened].
+     */
+    fun notifyAoaShown() {
+        scope.launch {
+            Locator.resolve<StatisticService>().notifyAoaShown()
+        }
+    }
+
+    /**
+     * Increments the count of arbitrary user actions (taps / clicks / interactions) before
+     * the first paywall. Frozen into `actions_before_paywall` on the first
+     * [notifyPaywallOpened]. Typical wiring: call from a base Activity / Fragment in the
+     * "user did something" hook.
+     */
+    fun notifyUserAction() {
+        scope.launch {
+            Locator.resolve<StatisticService>().notifyUserAction()
+        }
+    }
+
+    /**
+     * Stores the user's GDPR consent status as a user property (`gdpr_consent_status`).
+     * Accepts only `"accepted"`, `"rejected"`, `"unknown"`. Other values are ignored with
+     * a warning log. Defaults to `"unknown"` until set.
+     *
+     * Independent of [setAppsFlyerGdprConsent] / [setClarityConsent], which forward consent
+     * to the respective SDKs.
+     */
+    fun setGdprConsent(status: String) {
+        scope.launch {
+            Locator.resolve<StatisticService>().setGdprConsent(status)
         }
     }
 }

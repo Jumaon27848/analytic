@@ -1,27 +1,31 @@
 package com.analytic.atribution.gb
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import android.view.View
+import com.analytic.atribution.gb.appsflyer.ActivityPackageWatcher
+import com.analytic.atribution.gb.appsflyer.AppsFlyerInfo
+import com.analytic.atribution.gb.appsflyer.AppsFlyerManager
+import com.analytic.atribution.gb.clarity.ClarityInfo
+import com.analytic.atribution.gb.clarity.ClarityManager
+import com.analytic.atribution.gb.paywall.PaywallTracker
+import com.analytic.atribution.gb.paywall.SessionTracker
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 import java.util.Locale
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.seconds
 
@@ -39,47 +43,17 @@ internal class StatisticService(private val context: Context) {
 
     private val initializationStarted = AtomicBoolean(false)
     private val initialized = CompletableDeferred<Unit>()
+    private val appsFlyerInfoDeferred = CompletableDeferred<AppsFlyerInfo>()
+    private val clarityInfoDeferred = CompletableDeferred<ClarityInfo>()
+    private val activityPackageWatcher = ActivityPackageWatcher(context)
+    private val appsFlyerManager = AppsFlyerManager(context, activityPackageWatcher)
+    private val clarityManager = ClarityManager(context, activityPackageWatcher)
+    private val paywallTracker = PaywallTracker(context)
+    private val sessionTracker = SessionTracker(context) { triggerUserUpdate() }
     private val workerKey = "worker_enqueued"
     private val eventLightQueue = mutableListOf<Event>()
     private var api: StatisticServerAPI? = null
     private var eventQueue: EventQueue? = null
-    private val eventReceiver : BroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val eventBundle: Bundle = intent?.extras ?: run {
-                Log.e(Constants.LOG_TAG, "Received event broadcast without extra")
-                return
-            }
-            val timestamp: Long = eventBundle.getLong("timestamp").let {
-                if (it != 0L) it else System.currentTimeMillis()
-            }
-            val name: String = eventBundle.getString("name") ?: run {
-                Log.e(Constants.LOG_TAG, "Event without name received. Event must have a name")
-                return
-            }
-            val parameters: JSONObject = eventBundle.getBundle("parameters").let { parametersBundle ->
-                if (parametersBundle == null) {
-                    Log.d(Constants.LOG_TAG,
-                        "No parameters received for event \"$name\", will use empty JSON"
-                    )
-                    JSONObject()
-                } else {
-                    val jsonObject: JSONObject = JSONObject()
-                    parametersBundle.keySet().forEach { key ->
-                        jsonObject.put(key, parametersBundle.get(key))
-                    }
-                    jsonObject
-                }
-            }
-            val event = Event(
-                UUID.randomUUID().toString(),
-                timestamp,
-                name,
-                parameters
-            )
-
-            enqueueEvent(event)
-        }
-    }
 
     fun setHost(host: String, secure: Boolean) {
         sharedPreferences(context)
@@ -122,9 +96,7 @@ internal class StatisticService(private val context: Context) {
 
         scope.launch { Locator.register(this@StatisticService) }
 
-        LocalBroadcastManager.getInstance(context).registerReceiver(
-            eventReceiver, IntentFilter("analytic.event")
-        )
+        sessionTracker.start()
 
         Handler(Looper.getMainLooper()).post {
             val prefs: SharedPreferences = sharedPreferences(context)
@@ -144,6 +116,12 @@ internal class StatisticService(private val context: Context) {
                 host = prefs.getString(HOSTNAME_KEY, null)
                 if (host == null) {
                     Log.e(Constants.LOG_TAG, "No hostname provided, initialization impossible")
+                    if (!appsFlyerInfoDeferred.isCompleted) {
+                        appsFlyerInfoDeferred.complete(AppsFlyerInfo.EMPTY)
+                    }
+                    if (!clarityInfoDeferred.isCompleted) {
+                        clarityInfoDeferred.complete(ClarityInfo.EMPTY)
+                    }
                     initialized.complete(Unit)
                     return@launch
                 }
@@ -180,6 +158,9 @@ internal class StatisticService(private val context: Context) {
                     }
                 }
 
+                scope.launch { fetchAndStartAppsFlyer(api) }
+                scope.launch { fetchAndStartClarity(api) }
+
                 try {
                     updateAppInstance(api)
                 } finally {
@@ -200,6 +181,112 @@ internal class StatisticService(private val context: Context) {
     }
 
     suspend fun await() = initialized.await()
+
+    suspend fun awaitAppsFlyerInfo(): AppsFlyerInfo = appsFlyerInfoDeferred.await()
+
+    fun appsFlyerConversionFlow(): SharedFlow<Bundle> = appsFlyerManager.conversionFlow
+
+    fun lastAppsFlyerConversionBundle(): Bundle? = appsFlyerManager.lastConversionBundle()
+
+    fun logAppsFlyerEvent(eventName: String, params: Map<String, Any>?) =
+        appsFlyerManager.logEvent(eventName, params)
+
+    fun setAppsFlyerGdprConsent(hasGdpr: Boolean?) =
+        appsFlyerManager.setGdprConsent(hasGdpr)
+
+    suspend fun awaitClarityInfo(): ClarityInfo = clarityInfoDeferred.await()
+
+    fun setClarityConsent(hasConsent: Boolean) = clarityManager.setConsent(hasConsent)
+
+    fun maskClarityView(view: View) = clarityManager.maskView(view)
+
+    fun unmaskClarityView(view: View) = clarityManager.unmaskView(view)
+
+    fun notifyPaywallOpened() {
+        paywallTracker.notifyPaywallOpened()
+        triggerUserUpdate()
+    }
+
+    fun notifyPurchaseStarted() {
+        paywallTracker.notifyPurchaseStarted()
+        triggerUserUpdate()
+    }
+
+    fun notifyPurchaseCompleted() {
+        paywallTracker.notifyPurchaseCompleted()
+        triggerUserUpdate()
+    }
+
+    fun notifyInterstitialShown() = paywallTracker.notifyInterstitialShown()
+
+    fun notifyAoaShown() = paywallTracker.notifyAoaShown()
+
+    fun notifyUserAction() = paywallTracker.notifyUserAction()
+
+    fun setGdprConsent(status: String) {
+        paywallTracker.setGdprConsent(status)
+        triggerUserUpdate()
+    }
+
+    private fun triggerUserUpdate() {
+        val current = api ?: return
+        scope.launch { updateAppInstance(current) }
+    }
+
+    private suspend fun fetchAndStartAppsFlyer(api: StatisticServerAPI) {
+        val info: AppsFlyerInfo = try {
+            val raw = api.fetchAppsFlyerConfig(context.packageName)
+            AppsFlyerInfo.fromJson(JSONObject(raw))
+        } catch (e: Exception) {
+            Log.w(Constants.LOG_TAG, "Failed to fetch AppsFlyer info, defaulting to disabled", e)
+            AppsFlyerInfo.EMPTY
+        }
+        if (!appsFlyerInfoDeferred.isCompleted) {
+            appsFlyerInfoDeferred.complete(info)
+        }
+        try {
+            appsFlyerManager.start(info)
+        } catch (e: Throwable) {
+            Log.e(Constants.LOG_TAG, "AppsFlyer start failed", e)
+        }
+    }
+
+    private suspend fun fetchAndStartClarity(api: StatisticServerAPI) {
+        val raw: String? = try {
+            api.fetchClarityConfig(context.packageName)
+        } catch (e: Exception) {
+            Log.w(
+                Constants.LOG_TAG,
+                "Failed to fetch Clarity info for package=${context.packageName} " +
+                    "(${e.javaClass.simpleName}: ${e.message}), defaulting to disabled",
+                e
+            )
+            null
+        }
+        val info: ClarityInfo = if (raw == null) {
+            ClarityInfo.EMPTY
+        } else {
+            try {
+                ClarityInfo.fromJson(JSONObject(raw))
+            } catch (e: Exception) {
+                Log.w(
+                    Constants.LOG_TAG,
+                    "Failed to parse Clarity info (${e.javaClass.simpleName}: ${e.message}), " +
+                        "raw response length=${raw.length}, defaulting to disabled",
+                    e
+                )
+                ClarityInfo.EMPTY
+            }
+        }
+        if (!clarityInfoDeferred.isCompleted) {
+            clarityInfoDeferred.complete(info)
+        }
+        try {
+            clarityManager.start(info)
+        } catch (e: Throwable) {
+            Log.e(Constants.LOG_TAG, "Clarity start failed", e)
+        }
+    }
 
     private fun getData(key: String): AppInstanceData {
         val data: String = sharedPreferences(context).getString(key, null) ?: return AppInstanceData()
@@ -253,6 +340,28 @@ internal class StatisticService(private val context: Context) {
         currentData.affisePromoCode = preferences.getString(AFFISE_PROMO_CODE_KEY, null)
         currentData.webCustomerId = preferences.getString(WEB_CUSTOMER_ID, null)
         if (currentData.referrer == null) currentData.referrer = getInstallReferrer(context)
+
+        currentData.connectionType = getConnectionType(context)
+        currentData.screenResolution = getScreenResolution()
+        currentData.ramTotalBytes = getRamTotalBytes(context)
+        currentData.manufacturer = Build.MANUFACTURER
+        currentData.brand = Build.BRAND
+        val (storageTotal, storageFree) = getStorageTotalAndFreeBytes()
+        currentData.storageTotal = storageTotal
+        currentData.storageFree = storageFree
+        currentData.carrier = getCarrierName(context)
+        currentData.gdprConsentStatus = paywallTracker.getGdprStatus() ?: "unknown"
+        currentData.hamonVersion = Constants.LIB_VERSION
+        val pw = paywallTracker.getPaywallFields()
+        currentData.timeToPaywall = pw["time_to_paywall"]
+        currentData.actionsBeforePaywall = pw["actions_before_paywall"]?.toInt()
+        currentData.intersShownBeforePaywall = pw["inters_shown_before_paywall"]?.toInt()
+        currentData.aoaShownBeforePaywall = pw["aoa_shown_before_paywall"]?.toInt()
+        currentData.paywallConversionTime = pw["paywall_conversion_time"]
+        currentData.clickToPayTime = pw["click_to_pay_time"]
+        val st = sessionTracker.getFields()
+        currentData.sessionLengthFirst = st["session_length_first"]
+        currentData.tapsCountFirst30s = st["taps_count_first_30s"]?.toInt()
 
         if (currentData.toJson().toString() == savedData.toJson().toString()) {
             Log.i(Constants.LOG_TAG, "User data already updated")

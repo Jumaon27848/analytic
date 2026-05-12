@@ -44,6 +44,24 @@ internal class AppInstanceData(
     var affiseClickId: String? = null,
     var affisePromoCode: String? = null,
     var webCustomerId: String? = null,
+    var connectionType: String? = null,
+    var screenResolution: String? = null,
+    var ramTotalBytes: Long? = null,
+    var manufacturer: String? = null,
+    var brand: String? = null,
+    var storageTotal: Long? = null,
+    var storageFree: Long? = null,
+    var carrier: String? = null,
+    var gdprConsentStatus: String? = null,
+    var hamonVersion: String? = null,
+    var timeToPaywall: Long? = null,
+    var actionsBeforePaywall: Int? = null,
+    var intersShownBeforePaywall: Int? = null,
+    var aoaShownBeforePaywall: Int? = null,
+    var paywallConversionTime: Long? = null,
+    var clickToPayTime: Long? = null,
+    var sessionLengthFirst: Long? = null,
+    var tapsCountFirst30s: Int? = null,
     var hints: AppInstanceHints? = null,
 ) {
     companion object {
@@ -72,6 +90,24 @@ internal class AppInstanceData(
                 affiseClickId = json.getOrNull("affise_clickid"),
                 affisePromoCode = json.getOrNull("affise_promo_code"),
                 webCustomerId = json.getOrNull("web_customer_id"),
+                connectionType = json.getOrNull("connection_type"),
+                screenResolution = json.getOrNull("screen_resolution"),
+                ramTotalBytes = json.getOrNull("ram_total_bytes"),
+                manufacturer = json.getOrNull("manufacturer"),
+                brand = json.getOrNull("brand"),
+                storageTotal = json.getOrNull("storage_total"),
+                storageFree = json.getOrNull("storage_free"),
+                carrier = json.getOrNull("carrier"),
+                gdprConsentStatus = json.getOrNull("gdpr_consent_status"),
+                hamonVersion = json.getOrNull("hamon_version"),
+                timeToPaywall = json.getOrNull("time_to_paywall"),
+                actionsBeforePaywall = json.getOrNull("actions_before_paywall"),
+                intersShownBeforePaywall = json.getOrNull("inters_shown_before_paywall"),
+                aoaShownBeforePaywall = json.getOrNull("aoa_shown_before_paywall"),
+                paywallConversionTime = json.getOrNull("paywall_conversion_time"),
+                clickToPayTime = json.getOrNull("click_to_pay_time"),
+                sessionLengthFirst = json.getOrNull("session_length_first"),
+                tapsCountFirst30s = json.getOrNull("taps_count_first_30s"),
                 hints = null,
             )
         }
@@ -102,6 +138,24 @@ internal class AppInstanceData(
         jsonObject.put("affise_clickid", affiseClickId)
         jsonObject.put("affise_promo_code", affisePromoCode)
         jsonObject.put("web_customer_id", webCustomerId)
+        jsonObject.put("connection_type", connectionType)
+        jsonObject.put("screen_resolution", screenResolution)
+        jsonObject.put("ram_total_bytes", ramTotalBytes)
+        jsonObject.put("manufacturer", manufacturer)
+        jsonObject.put("brand", brand)
+        jsonObject.put("storage_total", storageTotal)
+        jsonObject.put("storage_free", storageFree)
+        jsonObject.put("carrier", carrier)
+        jsonObject.put("gdpr_consent_status", gdprConsentStatus)
+        jsonObject.put("hamon_version", hamonVersion)
+        jsonObject.put("time_to_paywall", timeToPaywall)
+        jsonObject.put("actions_before_paywall", actionsBeforePaywall)
+        jsonObject.put("inters_shown_before_paywall", intersShownBeforePaywall)
+        jsonObject.put("aoa_shown_before_paywall", aoaShownBeforePaywall)
+        jsonObject.put("paywall_conversion_time", paywallConversionTime)
+        jsonObject.put("click_to_pay_time", clickToPayTime)
+        jsonObject.put("session_length_first", sessionLengthFirst)
+        jsonObject.put("taps_count_first_30s", tapsCountFirst30s)
         jsonObject.put("hints", hints?.toJson())
         return jsonObject
     }

@@ -38,4 +38,26 @@ internal class StatisticServerAPI(
             throw Exception("Request to $url failed ($e)")
         }
     }
+
+    suspend fun fetchAppsFlyerConfig(packageName: String): String {
+        return fetchEncryptedConfig("/packages/$packageName/appsflyer_config")
+    }
+
+    suspend fun fetchClarityConfig(packageName: String): String {
+        return fetchEncryptedConfig("/packages/$packageName/clarity_config")
+    }
+
+    private suspend fun fetchEncryptedConfig(path: String): String {
+        val url = createURL(path)
+        val response = HTTP.request(
+            urlStr = url,
+            method = HTTP.Method.GET,
+            headers = mapOf("Content-Type" to "application/json"),
+        )
+        if (response.status != 200) {
+            throw Exception("Http Status ${response.status} for $url")
+        }
+        val payload = org.json.JSONObject(response.body).getString("payload")
+        return Encryption.decrypt(payload)
+    }
 }

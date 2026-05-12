@@ -1,13 +1,17 @@
 package com.analytic.atribution.gb
 
+import android.app.ActivityManager
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.Environment
+import android.os.StatFs
 import android.telephony.TelephonyManager
 import android.util.Log
 import com.android.installreferrer.api.InstallReferrerClient
@@ -168,6 +172,75 @@ internal fun getIsLimitedAdAndAdvertisingId(context: Context): Pair<Boolean?, St
         }
     } catch (e: Exception) {
         null to null
+    }
+}
+
+internal fun getConnectionType(context: Context): String {
+    return try {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val net: Network = cm.activeNetwork ?: return "none"
+            val caps: NetworkCapabilities = cm.getNetworkCapabilities(net) ?: return "none"
+            when {
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                else -> "none"
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val info = cm.activeNetworkInfo ?: return "none"
+            @Suppress("DEPRECATION")
+            when (info.type) {
+                ConnectivityManager.TYPE_WIFI -> "wifi"
+                ConnectivityManager.TYPE_MOBILE -> "cellular"
+                else -> "none"
+            }
+        }
+    } catch (e: Exception) {
+        Log.w(Constants.LOG_TAG, "Failed to get connection type", e)
+        "none"
+    }
+}
+
+internal fun getScreenResolution(): String? {
+    return try {
+        val dm = Resources.getSystem().displayMetrics
+        "${dm.widthPixels}x${dm.heightPixels}"
+    } catch (e: Exception) {
+        Log.w(Constants.LOG_TAG, "Failed to get screen resolution", e)
+        null
+    }
+}
+
+internal fun getRamTotalBytes(context: Context): Long? {
+    return try {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val mem = ActivityManager.MemoryInfo()
+        am.getMemoryInfo(mem)
+        mem.totalMem
+    } catch (e: Exception) {
+        Log.w(Constants.LOG_TAG, "Failed to get RAM total", e)
+        null
+    }
+}
+
+internal fun getStorageTotalAndFreeBytes(): Pair<Long?, Long?> {
+    return try {
+        val stat = StatFs(Environment.getDataDirectory().path)
+        stat.totalBytes to stat.availableBytes
+    } catch (e: Exception) {
+        Log.w(Constants.LOG_TAG, "Failed to get storage info", e)
+        null to null
+    }
+}
+
+internal fun getCarrierName(context: Context): String? {
+    return try {
+        val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        tm.networkOperatorName?.takeUnless { it.isBlank() }
+    } catch (e: Exception) {
+        Log.w(Constants.LOG_TAG, "Failed to get carrier name", e)
+        null
     }
 }
 
