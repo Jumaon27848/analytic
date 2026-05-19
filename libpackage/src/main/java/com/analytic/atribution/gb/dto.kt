@@ -62,6 +62,7 @@ internal class AppInstanceData(
     var clickToPayTime: Long? = null,
     var sessionLengthFirst: Long? = null,
     var tapsCountFirst30s: Int? = null,
+    var appsflyerId: String? = null,
     var hints: AppInstanceHints? = null,
 ) {
     companion object {
@@ -108,6 +109,7 @@ internal class AppInstanceData(
                 clickToPayTime = json.getOrNull("click_to_pay_time"),
                 sessionLengthFirst = json.getOrNull("session_length_first"),
                 tapsCountFirst30s = json.getOrNull("taps_count_first_30s"),
+                appsflyerId = json.getOrNull("appsflyer_id"),
                 hints = null,
             )
         }
@@ -156,6 +158,7 @@ internal class AppInstanceData(
         jsonObject.put("click_to_pay_time", clickToPayTime)
         jsonObject.put("session_length_first", sessionLengthFirst)
         jsonObject.put("taps_count_first_30s", tapsCountFirst30s)
+        jsonObject.put("appsflyer_id", appsflyerId)
         jsonObject.put("hints", hints?.toJson())
         return jsonObject
     }

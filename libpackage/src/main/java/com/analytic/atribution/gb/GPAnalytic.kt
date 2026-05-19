@@ -106,7 +106,6 @@ object GPAnalytic {
         scope.launch {
             val service = Locator.resolve<StatisticService>()
             service.enqueueEvent(event)
-            service.logAppsFlyerEvent(name, afParams)
         }
     }
 

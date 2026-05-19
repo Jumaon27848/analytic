@@ -246,6 +246,7 @@ internal class StatisticService(private val context: Context) {
         }
         try {
             appsFlyerManager.start(info)
+            triggerUserUpdate()
         } catch (e: Throwable) {
             Log.e(Constants.LOG_TAG, "AppsFlyer start failed", e)
         }
@@ -362,6 +363,7 @@ internal class StatisticService(private val context: Context) {
         val st = sessionTracker.getFields()
         currentData.sessionLengthFirst = st["session_length_first"]
         currentData.tapsCountFirst30s = st["taps_count_first_30s"]?.toInt()
+        appsFlyerManager.getAppsFlyerUID()?.let { currentData.appsflyerId = it }
 
         if (currentData.toJson().toString() == savedData.toJson().toString()) {
             Log.i(Constants.LOG_TAG, "User data already updated")

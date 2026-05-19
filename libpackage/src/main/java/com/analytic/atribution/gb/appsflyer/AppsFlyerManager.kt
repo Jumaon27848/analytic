@@ -8,6 +8,7 @@ import com.analytic.atribution.gb.sharedPreferences
 import com.appsflyer.AppsFlyerConsent
 import com.appsflyer.AppsFlyerConversionListener
 import com.appsflyer.AppsFlyerLib
+import com.google.firebase.analytics.FirebaseAnalytics
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -61,8 +62,28 @@ internal class AppsFlyerManager(
             af.setDebugLog(true)
         }
         af.init(devKey, conversionListener, context.applicationContext)
+        FirebaseAnalytics.getInstance(context.applicationContext).appInstanceId
+            .addOnSuccessListener { id ->
+                if (id != null) {
+                    af.setCustomerUserId(id)
+                    Log.i(Constants.LOG_TAG, "AppsFlyer customerUserId set from Firebase appInstanceId")
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.w(Constants.LOG_TAG, "AppsFlyer customerUserId: failed to read Firebase appInstanceId", e)
+            }
         af.start(context.applicationContext)
         Log.i(Constants.LOG_TAG, "AppsFlyer initialized")
+    }
+
+    fun getAppsFlyerUID(): String? {
+        if (!initialized.get()) return null
+        return try {
+            AppsFlyerLib.getInstance().getAppsFlyerUID(context.applicationContext)
+        } catch (e: Throwable) {
+            Log.w(Constants.LOG_TAG, "Failed to read AppsFlyer UID", e)
+            null
+        }
     }
 
     fun logEvent(eventName: String, params: Map<String, Any>?) {
