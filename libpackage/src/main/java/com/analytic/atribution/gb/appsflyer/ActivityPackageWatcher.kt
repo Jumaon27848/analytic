@@ -21,13 +21,23 @@ internal class ActivityPackageWatcher(context: Context) {
     @Volatile
     private var firstActivityIsLauncher: Boolean? = null
 
+    private val lock = Any()
+    private val pendingListeners = mutableListOf<(Boolean) -> Unit>()
+
     init {
         val application = context.applicationContext as? Application
         application?.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
-                if (firstActivityIsLauncher == null) {
-                    firstActivityIsLauncher = activity.componentName in launcherActivities
+                val listenersToFire: List<(Boolean) -> Unit>
+                val isLauncher: Boolean
+                synchronized(lock) {
+                    if (firstActivityIsLauncher != null) return
+                    isLauncher = activity.componentName in launcherActivities
+                    firstActivityIsLauncher = isLauncher
+                    listenersToFire = pendingListeners.toList()
+                    pendingListeners.clear()
                 }
+                listenersToFire.forEach { it(isLauncher) }
             }
 
             override fun onActivityStarted(activity: Activity) {}
@@ -45,6 +55,23 @@ internal class ActivityPackageWatcher(context: Context) {
      * proceed — we have no evidence of a foreign-process launch).
      */
     fun isFirstActivityLauncherOrNull(): Boolean? = firstActivityIsLauncher
+
+    /**
+     * Invokes [callback] with whether the first created activity is a launcher activity.
+     * Fires immediately if a first activity has already been observed; otherwise defers
+     * until [Application.ActivityLifecycleCallbacks.onActivityCreated] is observed.
+     */
+    fun awaitFirstActivity(callback: (isLauncher: Boolean) -> Unit) {
+        synchronized(lock) {
+            val known = firstActivityIsLauncher
+            if (known == null) {
+                pendingListeners.add(callback)
+                return
+            }
+            // fall through to fire outside the lock
+        }
+        callback(firstActivityIsLauncher == true)
+    }
 
     @SuppressLint("QueryPermissionsNeeded")
     private fun resolveLauncherActivities(context: Context): Set<ComponentName> {

@@ -34,14 +34,19 @@ internal class ClarityManager(
             return
         }
 
-        if (activityPackageWatcher.isFirstActivityLauncherOrNull() == false) {
-            Log.i(
-                Constants.LOG_TAG,
-                "Clarity init skipped: first activity is not a launcher activity"
-            )
-            return
+        activityPackageWatcher.awaitFirstActivity { isLauncher ->
+            if (!isLauncher) {
+                Log.i(
+                    Constants.LOG_TAG,
+                    "Clarity init skipped: first activity is not a launcher activity"
+                )
+                return@awaitFirstActivity
+            }
+            initializeClarity(projectId, info)
         }
+    }
 
+    private fun initializeClarity(projectId: String, info: ClarityInfo) {
         if (!initialized.compareAndSet(false, true)) {
             Log.w(Constants.LOG_TAG, "Clarity init called multiple times, ignoring")
             return
