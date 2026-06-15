@@ -27,6 +27,7 @@ import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 internal class StatisticService(private val context: Context) {
@@ -38,6 +39,12 @@ internal class StatisticService(private val context: Context) {
         const val AFFISE_CLICK_ID_KEY = "affise_click_id"
         const val AFFISE_PROMO_CODE_KEY = "affise_promo_code"
         const val WEB_CUSTOMER_ID = "web_customer_id"
+        const val APPSFLYER_CONFIG_KEY = "appsflyer.config"
+        const val APPSFLYER_CONFIG_UPDATED_AT_KEY = "appsflyer.config_updated_at"
+        const val CLARITY_CONFIG_KEY = "clarity.config"
+        const val CLARITY_CONFIG_UPDATED_AT_KEY = "clarity.config_updated_at"
+        const val STORAGE_FREE_UPDATED_AT_KEY = "storage_free.updated_at"
+        val REFRESH_INTERVAL_MILLIS = 24.hours.inWholeMilliseconds
         val semaphore = Semaphore(1)
     }
 
@@ -234,16 +241,42 @@ internal class StatisticService(private val context: Context) {
     }
 
     private suspend fun fetchAndStartAppsFlyer(api: StatisticServerAPI) {
-        val info: AppsFlyerInfo = try {
-            val raw = api.fetchAppsFlyerConfig(context.packageName)
-            AppsFlyerInfo.fromJson(JSONObject(raw))
-        } catch (e: Exception) {
-            Log.w(Constants.LOG_TAG, "Failed to fetch AppsFlyer info, defaulting to disabled", e)
-            AppsFlyerInfo.EMPTY
+        val prefs = sharedPreferences(context)
+        val now = System.currentTimeMillis()
+        val cachedRaw: String? = prefs.getString(APPSFLYER_CONFIG_KEY, null)
+        val cachedAt: Long = prefs.getLong(APPSFLYER_CONFIG_UPDATED_AT_KEY, 0L)
+        val cacheFresh: Boolean = cachedRaw != null && now - cachedAt < REFRESH_INTERVAL_MILLIS
+
+        val info: AppsFlyerInfo = if (cacheFresh) {
+            Log.i(Constants.LOG_TAG, "AppsFlyer config loaded from cache (age=${now - cachedAt}ms)")
+            parseAppsFlyerInfo(cachedRaw)
+        } else {
+            try {
+                val raw = api.fetchAppsFlyerConfig(context.packageName)
+                // Cache the raw config (including an empty/disabled one) so we don't hit the
+                // backend again for 24h. An empty key is a valid, cacheable "disabled" status.
+                prefs.edit()
+                    .putString(APPSFLYER_CONFIG_KEY, raw)
+                    .putLong(APPSFLYER_CONFIG_UPDATED_AT_KEY, now)
+                    .apply()
+                parseAppsFlyerInfo(raw)
+            } catch (e: Exception) {
+                // Don't update the timestamp so the next run retries; fall back to the last
+                // known config if we have one, otherwise stay disabled.
+                Log.w(Constants.LOG_TAG, "Failed to fetch AppsFlyer config, falling back to cache/disabled", e)
+                if (cachedRaw != null) parseAppsFlyerInfo(cachedRaw) else AppsFlyerInfo.EMPTY
+            }
         }
+
         if (!appsFlyerInfoDeferred.isCompleted) {
             appsFlyerInfoDeferred.complete(info)
         }
+
+        if (info.devKey.isNullOrEmpty()) {
+            Log.i(Constants.LOG_TAG, "AppsFlyer not initialized: empty devKey")
+            return
+        }
+
         try {
             appsFlyerManager.start(info)
             triggerUserUpdate()
@@ -252,33 +285,47 @@ internal class StatisticService(private val context: Context) {
         }
     }
 
-    private suspend fun fetchAndStartClarity(api: StatisticServerAPI) {
-        val raw: String? = try {
-            api.fetchClarityConfig(context.packageName)
+    private fun parseAppsFlyerInfo(raw: String): AppsFlyerInfo =
+        try {
+            AppsFlyerInfo.fromJson(JSONObject(raw))
         } catch (e: Exception) {
-            Log.w(
-                Constants.LOG_TAG,
-                "Failed to fetch Clarity info for package=${context.packageName} " +
-                    "(${e.javaClass.simpleName}: ${e.message}), defaulting to disabled",
-                e
-            )
-            null
+            Log.w(Constants.LOG_TAG, "Failed to parse AppsFlyer config, defaulting to disabled", e)
+            AppsFlyerInfo.EMPTY
         }
-        val info: ClarityInfo = if (raw == null) {
-            ClarityInfo.EMPTY
+
+    private suspend fun fetchAndStartClarity(api: StatisticServerAPI) {
+        val prefs = sharedPreferences(context)
+        val now = System.currentTimeMillis()
+        val cachedRaw: String? = prefs.getString(CLARITY_CONFIG_KEY, null)
+        val cachedAt: Long = prefs.getLong(CLARITY_CONFIG_UPDATED_AT_KEY, 0L)
+        val cacheFresh: Boolean = cachedRaw != null && now - cachedAt < REFRESH_INTERVAL_MILLIS
+
+        val info: ClarityInfo = if (cacheFresh) {
+            Log.i(Constants.LOG_TAG, "Clarity config loaded from cache (age=${now - cachedAt}ms)")
+            parseClarityInfo(cachedRaw)
         } else {
             try {
-                ClarityInfo.fromJson(JSONObject(raw))
+                val raw = api.fetchClarityConfig(context.packageName)
+                // Cache the raw config (including an empty/disabled one) so we don't hit the
+                // backend again for 24h. An empty projectId is a valid, cacheable "disabled" status.
+                prefs.edit()
+                    .putString(CLARITY_CONFIG_KEY, raw)
+                    .putLong(CLARITY_CONFIG_UPDATED_AT_KEY, now)
+                    .apply()
+                parseClarityInfo(raw)
             } catch (e: Exception) {
+                // Don't update the timestamp so the next run retries; fall back to the last
+                // known config if we have one, otherwise stay disabled.
                 Log.w(
                     Constants.LOG_TAG,
-                    "Failed to parse Clarity info (${e.javaClass.simpleName}: ${e.message}), " +
-                        "raw response length=${raw.length}, defaulting to disabled",
+                    "Failed to fetch Clarity config for package=${context.packageName} " +
+                        "(${e.javaClass.simpleName}: ${e.message}), falling back to cache/disabled",
                     e
                 )
-                ClarityInfo.EMPTY
+                if (cachedRaw != null) parseClarityInfo(cachedRaw) else ClarityInfo.EMPTY
             }
         }
+
         if (!clarityInfoDeferred.isCompleted) {
             clarityInfoDeferred.complete(info)
         }
@@ -288,6 +335,19 @@ internal class StatisticService(private val context: Context) {
             Log.e(Constants.LOG_TAG, "Clarity start failed", e)
         }
     }
+
+    private fun parseClarityInfo(raw: String): ClarityInfo =
+        try {
+            ClarityInfo.fromJson(JSONObject(raw))
+        } catch (e: Exception) {
+            Log.w(
+                Constants.LOG_TAG,
+                "Failed to parse Clarity config (${e.javaClass.simpleName}: ${e.message}), " +
+                    "raw response length=${raw.length}, defaulting to disabled",
+                e
+            )
+            ClarityInfo.EMPTY
+        }
 
     private fun getData(key: String): AppInstanceData {
         val data: String = sharedPreferences(context).getString(key, null) ?: return AppInstanceData()
@@ -349,7 +409,14 @@ internal class StatisticService(private val context: Context) {
         currentData.brand = Build.BRAND
         val (storageTotal, storageFree) = getStorageTotalAndFreeBytes()
         currentData.storageTotal = storageTotal
-        currentData.storageFree = storageFree
+        // storageFree changes almost constantly and would otherwise trigger a user update on
+        // every call. Only let a fresh value into the payload at most once per 24h; the rest
+        // of the time carry over the last sent value so this field never causes an update by
+        // itself. The timestamp is advanced after a successful send below.
+        val storageFreeUpdatedAt: Long = preferences.getLong(STORAGE_FREE_UPDATED_AT_KEY, 0L)
+        val storageFreeStale: Boolean =
+            System.currentTimeMillis() - storageFreeUpdatedAt >= REFRESH_INTERVAL_MILLIS
+        currentData.storageFree = if (storageFreeStale) storageFree else savedData.storageFree
         currentData.carrier = getCarrierName(context)
         currentData.gdprConsentStatus = paywallTracker.getGdprStatus() ?: "unknown"
         currentData.hamonVersion = Constants.LIB_VERSION
@@ -381,25 +448,30 @@ internal class StatisticService(private val context: Context) {
                 System.currentTimeMillis(),
             )
 
+            val onSent: () -> Unit = {
+                saveData(SAVED_DATA_KEY, currentData)
+                if (storageFreeStale) {
+                    preferences.edit()
+                        .putLong(STORAGE_FREE_UPDATED_AT_KEY, System.currentTimeMillis())
+                        .apply()
+                }
+                Log.i(Constants.LOG_TAG, "User data updated. User ID: $analyticAppID")
+            }
             try {
                 api.makeRequest(
                     "/users/" + analyticAppID,
                     HTTP.Method.POST,
-                    currentData.toJson().toString()
-                ) {
-                    saveData(SAVED_DATA_KEY, currentData)
-                    Log.i(Constants.LOG_TAG, "User data updated. User ID: $analyticAppID")
-                }
+                    currentData.toJson().toString(),
+                    onSent,
+                )
             } catch (e: Exception) {
                 Log.e(Constants.LOG_TAG, "First http request failed, retry...", e)
                 api.makeRequest(
                     "/users/" + analyticAppID,
                     HTTP.Method.POST,
-                    currentData.toJson().toString()
-                ) {
-                    saveData(SAVED_DATA_KEY, currentData)
-                    Log.i(Constants.LOG_TAG, "User data updated. User ID: $analyticAppID")
-                }
+                    currentData.toJson().toString(),
+                    onSent,
+                )
             }
         }
     }
