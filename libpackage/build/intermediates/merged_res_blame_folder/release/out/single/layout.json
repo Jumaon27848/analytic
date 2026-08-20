@@ -1,0 +1,14 @@
+[
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/layout/notification_template_part_chronometer.xml",
+        "source": "com.analytic.atribution.gb.libpackage-core-1.10.0-24:/layout/notification_template_part_chronometer.xml"
+    },
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/layout/notification_template_part_time.xml",
+        "source": "com.analytic.atribution.gb.libpackage-core-1.10.0-24:/layout/notification_template_part_time.xml"
+    },
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/layout/custom_dialog.xml",
+        "source": "com.analytic.atribution.gb.libpackage-core-1.10.0-24:/layout/custom_dialog.xml"
+    }
+]

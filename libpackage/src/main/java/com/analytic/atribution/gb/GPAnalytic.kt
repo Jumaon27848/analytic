@@ -36,12 +36,27 @@ object GPAnalytic {
      * Sets the hostname of the analytic server. Note that you have
      * 5 seconds to call this function, otherwise initialization process will be aborted.
      *
+     * Optionally initializes AppsFlyer immediately, see [appsFlyerKey].
+     *
      * @param host Hostname of the server. For example: `analytic.com`, `127.0.0.1`.
      * @param secure Whether to use secure protocols (https instead of http etc.)
+     * @param appsFlyerKey AppsFlyer dev key owned by the app. When provided, the AppsFlyer SDK is
+     * initialized right away — without waiting for the config request to the analytic server and
+     * without the launcher-activity check that the default flow applies (passing the key is an
+     * explicit opt-in by the app, so do not pass it in apps where another library may start the
+     * process on its own). Call [setHost] from `Application.onCreate`, before the first activity
+     * is created — otherwise the conversion callback is late again and there is no point in
+     * passing the key. The devKey from the admin console is ignored for this process; a mismatch
+     * is logged. [getAppsFlyerInfo] and [appsFlyerConversionFlow] behave as usual, i.e. the
+     * console config is still fetched — and it is fetched immediately rather than after the ~1s
+     * initialization delay, so [getAppsFlyerInfo] (and anything waiting on it, such as a
+     * web2app conversion listener reading `web2AppSubscriptionIds`) answers in tens of
+     * milliseconds. Call [setHost] from `Application.onCreate`, before the first activity.
      */
-    fun setHost(host: String, secure: Boolean = false) {
+    @JvmOverloads
+    fun setHost(host: String, secure: Boolean = false, appsFlyerKey: String? = null) {
         scope.launch {
-            Locator.resolve<StatisticService>().setHost(host, secure)
+            Locator.resolve<StatisticService>().setHost(host, secure, appsFlyerKey)
         }
     }
 
@@ -129,6 +144,25 @@ object GPAnalytic {
      */
     suspend fun getLastAppsFlyerConversion(): Bundle? {
         return Locator.resolve<StatisticService>().lastAppsFlyerConversionBundle()
+    }
+
+    /**
+     * Suspends until an AppsFlyer conversion payload is available and returns it, or returns null
+     * if none arrived within [timeoutMillis].
+     *
+     * Returns immediately when a payload is already known — including one cached from a previous
+     * process — so this is safe to call on every launch. Use it instead of a hand-rolled delay
+     * before deciding that there is no deep link: AppsFlyer resolves the conversion on its own
+     * server round trip, which on a first launch routinely takes several seconds and is unrelated
+     * to how early the SDK was initialized.
+     *
+     * Note that a conversion *failure* (AppsFlyer calling `onConversionDataFail`) does not cut the
+     * wait short — the call still returns null only after [timeoutMillis].
+     *
+     * @param timeoutMillis How long to wait. Defaults to 120 seconds.
+     */
+    suspend fun awaitAppsFlyerConversion(timeoutMillis: Long = 120_000): Bundle? {
+        return Locator.resolve<StatisticService>().awaitAppsFlyerConversion(timeoutMillis)
     }
 
     /**

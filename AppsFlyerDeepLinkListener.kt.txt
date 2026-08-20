@@ -1,0 +1,102 @@
+// Замена для startAppsFlyerConversionListener() в приложении (com.tokime.dramashorts).
+// Требует библиотеку gpanalytic 2.18.0+.
+//
+// Что исправляет:
+//   1. Убран delay(1000L) — он не лечил причину, а выигрывал гонку и мог перестать
+//      работать на медленном устройстве или при другой скорости ответа AppsFlyer.
+//   2. onNoDeepLink() больше не вызывается по таймеру до прихода данных.
+//      Собственная задержка AppsFlyer на первом запуске в логах: 4.8 с и >6.1 с.
+//   3. Реплей закэшированной конверсии из прошлого процесса (SharedFlow replay = 1)
+//      больше не принимается за ответ "диплинка нет".
+//   4. Название сериала читается из deep_link_sub1 с приоритетом sub2:
+//      в реальном пейлоаде приходит именно sub1, хотя код ожидал sub2.
+//
+// Отдельно, вне этой функции: убрать таймер, который отправляет событие
+// "deeplink_empty" примерно через 2.5 с после onb_welcome_scrn (он в
+// AppsFlyerDeepLinkState или на сплэше) — иначе он перебьёт эту логику.
+
+// --- imports ---
+// import kotlinx.coroutines.Job
+// import kotlinx.coroutines.delay
+// import kotlinx.coroutines.launch
+// import java.util.concurrent.atomic.AtomicBoolean
+
+// --- в companion object класса ---
+private companion object {
+    private const val KEY_DEEP_LINK_VALUE = "deep_link_value"
+    private const val KEY_DEEP_LINK_SUB1 = "deep_link_sub1"
+    private const val KEY_DEEP_LINK_SUB2 = "deep_link_sub2"
+    private const val KEY_AF_STATUS = "af_status"
+
+    /** Потолок ожидания, если от AppsFlyer не пришло вообще ничего. */
+    private const val DEEP_LINK_TIMEOUT_MS = 120_000L
+
+    /** Пришёл пейлоад без диплинка — столько ждём приход посвежее, прежде чем решить. */
+    private const val DEEP_LINK_GRACE_MS = 15_000L
+}
+
+private fun startAppsFlyerConversionListener() {
+    applicationScope.launch {
+        val listenerScope = this
+        val resolved = AtomicBoolean(false)
+        var graceJob: Job? = null
+
+        fun resolveNoDeepLink(reason: String) {
+            if (resolved.compareAndSet(false, true)) {
+                logDebug("[DEEP_LINK] no deep link: $reason")
+                AppsFlyerDeepLinkState.onNoDeepLink()
+            }
+        }
+
+        // Ничего не пришло за весь таймаут — только тогда считаем, что диплинка нет.
+        val hardTimeoutJob = listenerScope.launch {
+            delay(DEEP_LINK_TIMEOUT_MS)
+            resolveNoDeepLink("nothing arrived within $DEEP_LINK_TIMEOUT_MS ms")
+        }
+
+        GPAnalytic.appsFlyerConversionFlow.collect { bundle ->
+            val data: Map<String, Any> = bundle.keySet()
+                .mapNotNull { key -> @Suppress("DEPRECATION") bundle.get(key)?.let { key to it } }
+                .toMap()
+
+            val deepLinkValue = data[KEY_DEEP_LINK_VALUE]?.toString()?.takeIf { it.isNotBlank() }
+            // Название сериала реально приходит в deep_link_sub1 (видно в логах конверсии),
+            // sub2 оставлен первым на случай, если OneLink перенастроят.
+            val movieName = (data[KEY_DEEP_LINK_SUB2] ?: data[KEY_DEEP_LINK_SUB1])
+                ?.toString()?.takeIf { it.isNotBlank() }
+            val afStatus = data[KEY_AF_STATUS]?.toString()
+
+            logDebug("[DEEP_LINK] conversion: value=$deepLinkValue, name=$movieName, af_status=$afStatus")
+
+            when {
+                // 1. Диплинк перекрывает любое предыдущее решение: он может прийти и после
+                // таймаута — например, при открытии живого приложения по ссылке.
+                deepLinkValue != null || movieName != null -> {
+                    graceJob?.cancel()
+                    hardTimeoutJob.cancel()
+                    resolved.set(true)
+                    AppsFlyerDeepLinkState.onDeepLink(value = deepLinkValue, sub2 = movieName)
+                }
+
+                // 2. Органика — окончательный ответ, отложенного диплинка для этой установки не будет.
+                afStatus.equals("Organic", ignoreCase = true) -> {
+                    graceJob?.cancel()
+                    hardTimeoutJob.cancel()
+                    resolveNoDeepLink("af_status=Organic")
+                }
+
+                // 3. Пейлоад без диплинка и не органика. Это может быть конверсия из прошлого
+                // процесса, которую поток реплеит подписчику. Решение откладываем.
+                else -> {
+                    logDebug("[DEEP_LINK] payload without a deep link, waiting $DEEP_LINK_GRACE_MS ms for a fresher one")
+                    graceJob?.cancel()
+                    graceJob = listenerScope.launch {
+                        delay(DEEP_LINK_GRACE_MS)
+                        hardTimeoutJob.cancel()
+                        resolveNoDeepLink("only payloads without a deep link")
+                    }
+                }
+            }
+        }
+    }
+}

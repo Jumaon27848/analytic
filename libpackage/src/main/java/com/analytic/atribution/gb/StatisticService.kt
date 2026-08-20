@@ -20,9 +20,11 @@ import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 import java.util.Locale
@@ -62,12 +64,68 @@ internal class StatisticService(private val context: Context) {
     private var api: StatisticServerAPI? = null
     private var eventQueue: EventQueue? = null
 
-    fun setHost(host: String, secure: Boolean) {
+    /** devKey passed by the host app to [setHost], if any. Set before the SDK is initialized. */
+    @Volatile
+    private var eagerAppsFlyerDevKey: String? = null
+
+    fun setHost(host: String, secure: Boolean, appsFlyerDevKey: String? = null) {
         sharedPreferences(context)
             .edit()
             .putBoolean(SECURE_KEY, secure)
             .putString(HOSTNAME_KEY, host)
             .apply()
+
+        if (!appsFlyerDevKey.isNullOrEmpty()) {
+            startAppsFlyerEagerly(appsFlyerDevKey)
+            fetchAppsFlyerConfigNow(host, secure)
+        }
+    }
+
+    /**
+     * Requests the AppsFlyer config right now instead of after the initialization delay in [init],
+     * so [awaitAppsFlyerInfo] (i.e. `GPAnalytic.getAppsFlyerInfo()`) answers in tens of
+     * milliseconds rather than a second later. The SDK itself is already up by this point — it was
+     * started from the devKey the app passed — so this call only fills in the console config
+     * (`web2AppSubscriptionIds`, debug flags) and refreshes the 24h cache.
+     */
+    private fun fetchAppsFlyerConfigNow(host: String, secure: Boolean) {
+        scope.launch {
+            Log.i(Constants.LOG_TAG, "Fetching AppsFlyer config immediately after setHost")
+            try {
+                fetchAndStartAppsFlyer(StatisticServerAPI(host, secure))
+            } catch (e: Throwable) {
+                Log.e(Constants.LOG_TAG, "Immediate AppsFlyer config fetch failed", e)
+            }
+            // The service-wide api does not exist yet, so the user update inside
+            // fetchAndStartAppsFlyer was a no-op. Ship appsflyerId once init() has built the api.
+            initialized.await()
+            triggerUserUpdate()
+        }
+    }
+
+    /**
+     * Initializes AppsFlyer right now with a devKey supplied by the host app, without waiting
+     * for the config request to our server and without the launcher-activity check. Debug flags
+     * are taken from the cached config when there is one — the fresh config may not have arrived
+     * yet at this point.
+     */
+    private fun startAppsFlyerEagerly(devKey: String) {
+        eagerAppsFlyerDevKey = devKey
+        val cachedRaw: String? = sharedPreferences(context).getString(APPSFLYER_CONFIG_KEY, null)
+        val cached: AppsFlyerInfo =
+            if (cachedRaw != null) parseAppsFlyerInfo(cachedRaw) else AppsFlyerInfo.EMPTY
+        val info = AppsFlyerInfo(
+            devKey = devKey,
+            isDebugMode = cached.isDebugMode,
+            isLoggingEnabled = cached.isLoggingEnabled,
+            web2AppSubscriptionIds = emptyList(),
+        )
+        Log.i(Constants.LOG_TAG, "Starting AppsFlyer eagerly with the devKey passed to setHost")
+        try {
+            appsFlyerManager.start(info, skipActivityCheck = true)
+        } catch (e: Throwable) {
+            Log.e(Constants.LOG_TAG, "Eager AppsFlyer start failed", e)
+        }
     }
 
     suspend fun setAdditionalUserData(
@@ -195,6 +253,9 @@ internal class StatisticService(private val context: Context) {
 
     fun lastAppsFlyerConversionBundle(): Bundle? = appsFlyerManager.lastConversionBundle()
 
+    suspend fun awaitAppsFlyerConversion(timeoutMillis: Long): Bundle? =
+        withTimeoutOrNull(timeoutMillis) { appsFlyerManager.conversionFlow.first() }
+
     fun logAppsFlyerEvent(eventName: String, params: Map<String, Any>?) =
         appsFlyerManager.logEvent(eventName, params)
 
@@ -270,6 +331,22 @@ internal class StatisticService(private val context: Context) {
 
         if (!appsFlyerInfoDeferred.isCompleted) {
             appsFlyerInfoDeferred.complete(info)
+        }
+
+        if (appsFlyerManager.isInitialized) {
+            Log.i(Constants.LOG_TAG, "AppsFlyer already initialized eagerly from setHost")
+            val eagerKey = eagerAppsFlyerDevKey
+            if (!info.devKey.isNullOrEmpty() && eagerKey != null && info.devKey != eagerKey) {
+                Log.w(
+                    Constants.LOG_TAG,
+                    "AppsFlyer devKey from console differs from the one passed to setHost, " +
+                        "the setHost key stays in effect"
+                )
+            }
+            // Same as the normal path below: make sure appsflyerId reaches the server. Runs under
+            // the same semaphore as the initial update and is a no-op when nothing changed.
+            triggerUserUpdate()
+            return
         }
 
         if (info.devKey.isNullOrEmpty()) {

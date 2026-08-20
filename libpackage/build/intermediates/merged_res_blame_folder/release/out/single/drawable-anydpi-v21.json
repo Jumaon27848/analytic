@@ -1,0 +1,26 @@
+[
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/drawable-anydpi-v21/ic_call_answer_video.xml",
+        "source": "com.analytic.atribution.gb.libpackage-core-1.10.0-24:/drawable-anydpi-v21/ic_call_answer_video.xml"
+    },
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/drawable-anydpi-v21/ic_call_answer_video_low.xml",
+        "source": "com.analytic.atribution.gb.libpackage-core-1.10.0-24:/drawable-anydpi-v21/ic_call_answer_video_low.xml"
+    },
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/drawable-anydpi-v21/ic_call_answer_low.xml",
+        "source": "com.analytic.atribution.gb.libpackage-core-1.10.0-24:/drawable-anydpi-v21/ic_call_answer_low.xml"
+    },
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/drawable-anydpi-v21/ic_call_decline_low.xml",
+        "source": "com.analytic.atribution.gb.libpackage-core-1.10.0-24:/drawable-anydpi-v21/ic_call_decline_low.xml"
+    },
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/drawable-anydpi-v21/ic_call_decline.xml",
+        "source": "com.analytic.atribution.gb.libpackage-core-1.10.0-24:/drawable-anydpi-v21/ic_call_decline.xml"
+    },
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/drawable-anydpi-v21/ic_call_answer.xml",
+        "source": "com.analytic.atribution.gb.libpackage-core-1.10.0-24:/drawable-anydpi-v21/ic_call_answer.xml"
+    }
+]

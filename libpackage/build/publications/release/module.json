@@ -1,0 +1,132 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.analytic.atribution.gb",
+    "module": "gpanalytic",
+    "version": "2.12.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "7.3.3"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.0.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "gpanalytic-2.12.0.aar",
+          "url": "gpanalytic-2.12.0.aar",
+          "size": 234612,
+          "sha512": "bf5c121bb93fc63e324370f13c8f319fd967900b6ee4ac29069c222b5f4ec0bc7b61a78723bac5df5153675efb0e5c5c9b7b8bff063f7be907412c1cc85377fa",
+          "sha256": "1c1f3a61b7457a33ac99cbb0108e73e120412bb15e76e598647dbe6f6cff574a",
+          "sha1": "516f33904798fbb55e7db9d724339a547f106a30",
+          "md5": "b9e6f72d5a1bc8af2b7b34342979feb9"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.work",
+          "module": "work-runtime-ktx",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "com.google.firebase",
+          "module": "firebase-messaging-ktx",
+          "version": {
+            "requires": "23.1.1"
+          }
+        },
+        {
+          "group": "com.google.firebase",
+          "module": "firebase-analytics-ktx",
+          "version": {
+            "requires": "21.2.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.10.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.10.1"
+          }
+        },
+        {
+          "group": "com.android.installreferrer",
+          "module": "installreferrer",
+          "version": {
+            "requires": "2.2"
+          }
+        },
+        {
+          "group": "com.appsflyer",
+          "module": "af-android-sdk",
+          "version": {
+            "requires": "6.17.5"
+          }
+        },
+        {
+          "group": "com.microsoft.clarity",
+          "module": "clarity-compose",
+          "version": {
+            "requires": "3.8.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.0.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "gpanalytic-2.12.0.aar",
+          "url": "gpanalytic-2.12.0.aar",
+          "size": 234612,
+          "sha512": "bf5c121bb93fc63e324370f13c8f319fd967900b6ee4ac29069c222b5f4ec0bc7b61a78723bac5df5153675efb0e5c5c9b7b8bff063f7be907412c1cc85377fa",
+          "sha256": "1c1f3a61b7457a33ac99cbb0108e73e120412bb15e76e598647dbe6f6cff574a",
+          "sha1": "516f33904798fbb55e7db9d724339a547f106a30",
+          "md5": "b9e6f72d5a1bc8af2b7b34342979feb9"
+        }
+      ]
+    }
+  ]
+}

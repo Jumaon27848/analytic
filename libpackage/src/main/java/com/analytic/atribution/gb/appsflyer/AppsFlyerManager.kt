@@ -34,17 +34,34 @@ internal class AppsFlyerManager(
     val conversionFlow: SharedFlow<Bundle> = _conversionFlow.asSharedFlow()
 
     init {
-        lastConversionBundle()?.let { _conversionFlow.tryEmit(it) }
+        // Emitting the previous process's payload is silent otherwise, which makes it look like a
+        // subscriber reacted to nothing. Log it so the replay is visible in the timeline.
+        lastConversionBundle()?.let {
+            Log.i(
+                Constants.LOG_TAG,
+                "Replaying cached AppsFlyer conversion from a previous process: ${it.keySet()}"
+            )
+            _conversionFlow.tryEmit(it)
+        }
     }
 
-    fun start(info: AppsFlyerInfo) {
+    val isInitialized: Boolean get() = initialized.get()
+
+    /**
+     * Initializes the AppsFlyer SDK.
+     *
+     * @param skipActivityCheck when true, the launcher-activity check is bypassed. Used by the
+     * eager path (host app passed a devKey to `setHost`), which runs from `Application.onCreate`
+     * before any activity exists and is an explicit opt-in by the app.
+     */
+    fun start(info: AppsFlyerInfo, skipActivityCheck: Boolean = false) {
         val devKey = info.devKey
         if (devKey.isNullOrEmpty()) {
             Log.i(Constants.LOG_TAG, "AppsFlyer disabled: empty devKey")
             return
         }
 
-        if (activityPackageWatcher.isFirstActivityLauncherOrNull() == false) {
+        if (!skipActivityCheck && activityPackageWatcher.isFirstActivityLauncherOrNull() == false) {
             Log.i(
                 Constants.LOG_TAG,
                 "AppsFlyer init skipped: first activity is not a launcher activity"
@@ -57,22 +74,28 @@ internal class AppsFlyerManager(
             return
         }
 
-        val af = AppsFlyerLib.getInstance()
-        if (info.isDebugMode || info.isLoggingEnabled) {
-            af.setDebugLog(true)
-        }
-        af.init(devKey, conversionListener, context.applicationContext)
-        FirebaseAnalytics.getInstance(context.applicationContext).appInstanceId
-            .addOnSuccessListener { id ->
-                if (id != null) {
-                    af.setCustomerUserId(id)
-                    Log.i(Constants.LOG_TAG, "AppsFlyer customerUserId set from Firebase appInstanceId")
+        try {
+            val af = AppsFlyerLib.getInstance()
+            if (info.isDebugMode || info.isLoggingEnabled) {
+                af.setDebugLog(true)
+            }
+            af.init(devKey, conversionListener, context.applicationContext)
+            FirebaseAnalytics.getInstance(context.applicationContext).appInstanceId
+                .addOnSuccessListener { id ->
+                    if (id != null) {
+                        af.setCustomerUserId(id)
+                        Log.i(Constants.LOG_TAG, "AppsFlyer customerUserId set from Firebase appInstanceId")
+                    }
                 }
-            }
-            .addOnFailureListener { e ->
-                Log.w(Constants.LOG_TAG, "AppsFlyer customerUserId: failed to read Firebase appInstanceId", e)
-            }
-        af.start(context.applicationContext)
+                .addOnFailureListener { e ->
+                    Log.w(Constants.LOG_TAG, "AppsFlyer customerUserId: failed to read Firebase appInstanceId", e)
+                }
+            af.start(context.applicationContext)
+        } catch (e: Throwable) {
+            // Release the flag so a later attempt (e.g. the server-config driven path) can retry.
+            initialized.set(false)
+            throw e
+        }
         Log.i(Constants.LOG_TAG, "AppsFlyer initialized")
     }
 

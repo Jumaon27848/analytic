@@ -1,0 +1,34 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.analytic.atribution.gb" >
+4
+5    <uses-sdk
+6        android:minSdkVersion="21"
+6-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml
+7        android:targetSdkVersion="34" />
+7-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml
+8
+9    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+9-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:4:2-76
+9-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:4:19-73
+10    <uses-permission android:name="android.permission.INTERNET" />
+10-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:5:2-64
+10-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:5:19-61
+11    <uses-permission android:name="android.permission.WAKE_LOCK" />
+11-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:6:2-65
+11-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:6:19-62
+12
+13    <application android:usesCleartextTraffic="true" >
+13-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:7:2-13:16
+13-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:8:3-38
+14        <provider
+14-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:9:3-12:63
+15            android:name="com.analytic.atribution.gb.StatisticProvider"
+15-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:10:4-63
+16            android:authorities="${applicationId}.StatisticProvider"
+16-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:12:4-60
+17            android:exported="false" />
+17-->/Users/user/analytic/libpackage/src/main/AndroidManifest.xml:11:4-28
+18    </application>
+19
+20</manifest>

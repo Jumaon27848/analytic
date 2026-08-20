@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/xml/appsflyer_backup_rules.xml",
+        "source": "com.analytic.atribution.gb.libpackage-jetified-af-android-sdk-6.17.5-20:/xml/appsflyer_backup_rules.xml"
+    },
+    {
+        "merged": "com.analytic.atribution.gb.libpackage-merged_res-43:/xml/appsflyer_data_extraction_rules.xml",
+        "source": "com.analytic.atribution.gb.libpackage-jetified-af-android-sdk-6.17.5-20:/xml/appsflyer_data_extraction_rules.xml"
+    }
+]
