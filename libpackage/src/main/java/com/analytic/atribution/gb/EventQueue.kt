@@ -23,9 +23,11 @@ import org.json.JSONObject
  * @param flushThreshold Amount of events that will trigger auto flush.
  * @param flushIntervalMs Amount of time passed after oldest event in the queue that will trigger
  * auto flush.
- * @param flushRetryIntervalMs Amount of time to wait after auto flush fail before next attempt.
- * The queue does not have internal retry mechanism, either [checkFlush] or [enqueue2] must be called
- * for the next attempt to happen.
+ * @param flushRetryIntervalMs Amount of time to wait after the first auto flush fail before next
+ * attempt. Doubles after each consecutive fail (exponential backoff) and resets after a successful
+ * flush. The queue does not have internal retry mechanism, either [checkFlush] or [enqueue2] must be
+ * called for the next attempt to happen.
+ * @param flushMaxRetryIntervalMs Upper bound for the backoff interval.
  */
 internal class EventQueue(
     private val context: Context,
@@ -35,9 +37,11 @@ internal class EventQueue(
     private val flushThreshold: Int,
     private val flushIntervalMs: Long,
     private val flushRetryIntervalMs: Long,
+    private val flushMaxRetryIntervalMs: Long,
 ) {
     private val flushLock = Mutex()
     private var lastFailedFlushTime: Long = 0
+    private var consecutiveFailures: Int = 0
 
     suspend fun enqueue2(event: Event) {
         if (repository.stats().first >= Constants.LOCAL_EVENT_LIMIT) {
@@ -60,12 +64,14 @@ internal class EventQueue(
                 if (events.isEmpty()) break
                 try {
                     sendEvents(events)
+                    repository.delete(events)
                 } catch (e: Exception) {
-                    Log.e(Constants.LOG_TAG, "Failed to flush events", e)
+                    consecutiveFailures++
                     lastFailedFlushTime = System.currentTimeMillis()
+                    Log.e(Constants.LOG_TAG, "Failed to flush events, next attempt in ${retryIntervalMs()} ms", e)
                     break
                 }
-                repository.delete(events)
+                consecutiveFailures = 0
                 Log.i(Constants.LOG_TAG, events.size.toString() + " events flushed")
             }
         } finally {
@@ -75,12 +81,19 @@ internal class EventQueue(
 
     suspend fun checkFlush() {
         if (flushLock.isLocked) return
-        if (System.currentTimeMillis() - lastFailedFlushTime < flushRetryIntervalMs) return
+        if (System.currentTimeMillis() - lastFailedFlushTime < retryIntervalMs()) return
         val (eventCount: Int, oldestTimestamp: Long?) = repository.stats()
         if (oldestTimestamp == null) return
         if (eventCount < flushThreshold && System.currentTimeMillis() - oldestTimestamp < flushIntervalMs) return
 
         flush(eventCount)
+    }
+
+    private fun retryIntervalMs(): Long {
+        if (consecutiveFailures <= 1) return flushRetryIntervalMs
+        // Cap the shift to avoid Long overflow, the result is capped anyway
+        val shift: Int = (consecutiveFailures - 1).coerceAtMost(30)
+        return (flushRetryIntervalMs shl shift).coerceAtMost(flushMaxRetryIntervalMs)
     }
 
     private suspend fun sendEvents(events: List<Event>) {

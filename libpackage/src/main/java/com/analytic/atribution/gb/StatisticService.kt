@@ -30,6 +30,7 @@ import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 internal class StatisticService(private val context: Context) {
@@ -202,6 +203,7 @@ internal class StatisticService(private val context: Context) {
                     10,
                     10.seconds.inWholeMilliseconds,
                     10.seconds.inWholeMilliseconds,
+                    15.minutes.inWholeMilliseconds,
                 )
                 if (eventLightQueue.isNotEmpty()) {
                     scope.launch {
