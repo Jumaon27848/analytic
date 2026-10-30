@@ -13,6 +13,7 @@ import com.analytic.atribution.gb.clarity.ClarityManager
 import com.analytic.atribution.gb.paywall.PaywallTracker
 import com.analytic.atribution.gb.paywall.SessionTracker
 import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.installations.FirebaseInstallations
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -303,7 +304,16 @@ internal class StatisticService(private val context: Context) {
 
         // This may fail, but there's no way to recover. analyticAppID is required
         val analyticAppID: String = FirebaseAnalytics.getInstance(context).appInstanceId.await()
-        currentData.firebaseToken = FirebaseMessaging.getInstance().token.await()
+        // Exactly one push target is sent, so the backend knows how to address pushes: the
+        // Firebase Installation ID in FCM installation-id mode (no tokens are issued there),
+        // the FCM registration token otherwise.
+        if (isFcmInstallationIdModeEnabled(context)) {
+            currentData.firebaseMessagingId = FirebaseInstallations.getInstance().id.await()
+            currentData.firebaseToken = null
+        } else {
+            currentData.firebaseToken = FirebaseMessaging.getInstance().token.await()
+            currentData.firebaseMessagingId = null
+        }
         currentData.libID = getLibId(context).let { id -> if (!id.isNullOrEmpty()) id else null }
         currentData.appPackage = context.packageName
         currentData.appFirstOpenTimestamp = getFirstOpenTimestamp(context)
@@ -361,7 +371,7 @@ internal class StatisticService(private val context: Context) {
         } else {
             saveData(CURRENT_DATA_KEY, currentData)
 
-            val firstRequest: Boolean = savedData.firebaseToken == null
+            val firstRequest: Boolean = savedData.appPackage == null
             if (!firstRequest) {
                 Log.i(Constants.LOG_TAG, "User data changed")
             }

@@ -162,6 +162,35 @@ internal fun getTenjinAnalyticsInstallationId(context: Context): String? {
     return tenjinPreferences.getString("analyticsInstallationId", null)
 }
 
+/**
+ * Whether the host app has FCM installation-id mode on, i.e. pushes are addressed by
+ * Firebase Installation ID instead of a registration token. Requires both the manifest flag
+ * and a firebase-messaging version that supports it (25.1.2+, has `onRegistered`).
+ */
+internal fun isFcmInstallationIdModeEnabled(context: Context): Boolean {
+    return try {
+        val metaData = context.packageManager
+            .getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
+            .metaData
+        if (metaData?.getBoolean("firebase_messaging_installation_id_enabled", false) != true) {
+            return false
+        }
+        com.google.firebase.messaging.FirebaseMessagingService::class.java
+            .getMethod("onRegistered", String::class.java)
+        true
+    } catch (e: NoSuchMethodException) {
+        Log.w(
+            Constants.LOG_TAG,
+            "firebase_messaging_installation_id_enabled is set, but firebase-messaging " +
+                "doesn't support it, falling back to FCM token"
+        )
+        false
+    } catch (e: Exception) {
+        Log.w(Constants.LOG_TAG, "Failed to check FCM installation id mode", e)
+        false
+    }
+}
+
 internal fun getIsLimitedAdAndAdvertisingId(context: Context): Pair<Boolean?, String?> {
     return try {
         val info = AdvertisingIdClient.getAdvertisingIdInfo(context)
