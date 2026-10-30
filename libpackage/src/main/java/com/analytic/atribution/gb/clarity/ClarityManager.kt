@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import android.view.View
 import com.analytic.atribution.gb.Constants
-import com.analytic.atribution.gb.appsflyer.ActivityPackageWatcher
 import com.microsoft.clarity.Clarity
 import com.microsoft.clarity.ClarityConfig
 import com.microsoft.clarity.models.LogLevel
@@ -13,8 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Owns Microsoft Clarity SDK initialization and exposes mask/unmask + consent helpers.
  *
- * Mirrors [com.analytic.atribution.gb.appsflyer.AppsFlyerManager]: init only when the
- * console-supplied projectId is non-empty AND the first activity created in the process
+ * Init only when the console-supplied projectId is non-empty AND the first activity created in the process
  * is one of the host's launcher activities. Initializes at most once per process.
  */
 internal class ClarityManager(

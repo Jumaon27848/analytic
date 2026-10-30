@@ -3,14 +3,11 @@ package com.analytic.atribution.gb
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
-import com.analytic.atribution.gb.appsflyer.ActivityPackageWatcher
-import com.analytic.atribution.gb.appsflyer.AppsFlyerInfo
-import com.analytic.atribution.gb.appsflyer.AppsFlyerManager
+import com.analytic.atribution.gb.clarity.ActivityPackageWatcher
 import com.analytic.atribution.gb.clarity.ClarityInfo
 import com.analytic.atribution.gb.clarity.ClarityManager
 import com.analytic.atribution.gb.paywall.PaywallTracker
@@ -19,12 +16,9 @@ import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 import java.util.Locale
@@ -42,8 +36,6 @@ internal class StatisticService(private val context: Context) {
         const val AFFISE_CLICK_ID_KEY = "affise_click_id"
         const val AFFISE_PROMO_CODE_KEY = "affise_promo_code"
         const val WEB_CUSTOMER_ID = "web_customer_id"
-        const val APPSFLYER_CONFIG_KEY = "appsflyer.config"
-        const val APPSFLYER_CONFIG_UPDATED_AT_KEY = "appsflyer.config_updated_at"
         const val CLARITY_CONFIG_KEY = "clarity.config"
         const val CLARITY_CONFIG_UPDATED_AT_KEY = "clarity.config_updated_at"
         const val STORAGE_FREE_UPDATED_AT_KEY = "storage_free.updated_at"
@@ -53,10 +45,8 @@ internal class StatisticService(private val context: Context) {
 
     private val initializationStarted = AtomicBoolean(false)
     private val initialized = CompletableDeferred<Unit>()
-    private val appsFlyerInfoDeferred = CompletableDeferred<AppsFlyerInfo>()
     private val clarityInfoDeferred = CompletableDeferred<ClarityInfo>()
     private val activityPackageWatcher = ActivityPackageWatcher(context)
-    private val appsFlyerManager = AppsFlyerManager(context, activityPackageWatcher)
     private val clarityManager = ClarityManager(context, activityPackageWatcher)
     private val paywallTracker = PaywallTracker(context)
     private val sessionTracker = SessionTracker(context) { triggerUserUpdate() }
@@ -65,68 +55,12 @@ internal class StatisticService(private val context: Context) {
     private var api: StatisticServerAPI? = null
     private var eventQueue: EventQueue? = null
 
-    /** devKey passed by the host app to [setHost], if any. Set before the SDK is initialized. */
-    @Volatile
-    private var eagerAppsFlyerDevKey: String? = null
-
-    fun setHost(host: String, secure: Boolean, appsFlyerDevKey: String? = null) {
+    fun setHost(host: String, secure: Boolean) {
         sharedPreferences(context)
             .edit()
             .putBoolean(SECURE_KEY, secure)
             .putString(HOSTNAME_KEY, host)
             .apply()
-
-        if (!appsFlyerDevKey.isNullOrEmpty()) {
-            startAppsFlyerEagerly(appsFlyerDevKey)
-            fetchAppsFlyerConfigNow(host, secure)
-        }
-    }
-
-    /**
-     * Requests the AppsFlyer config right now instead of after the initialization delay in [init],
-     * so [awaitAppsFlyerInfo] (i.e. `GPAnalytic.getAppsFlyerInfo()`) answers in tens of
-     * milliseconds rather than a second later. The SDK itself is already up by this point — it was
-     * started from the devKey the app passed — so this call only fills in the console config
-     * (`web2AppSubscriptionIds`, debug flags) and refreshes the 24h cache.
-     */
-    private fun fetchAppsFlyerConfigNow(host: String, secure: Boolean) {
-        scope.launch {
-            Log.i(Constants.LOG_TAG, "Fetching AppsFlyer config immediately after setHost")
-            try {
-                fetchAndStartAppsFlyer(StatisticServerAPI(host, secure))
-            } catch (e: Throwable) {
-                Log.e(Constants.LOG_TAG, "Immediate AppsFlyer config fetch failed", e)
-            }
-            // The service-wide api does not exist yet, so the user update inside
-            // fetchAndStartAppsFlyer was a no-op. Ship appsflyerId once init() has built the api.
-            initialized.await()
-            triggerUserUpdate()
-        }
-    }
-
-    /**
-     * Initializes AppsFlyer right now with a devKey supplied by the host app, without waiting
-     * for the config request to our server and without the launcher-activity check. Debug flags
-     * are taken from the cached config when there is one — the fresh config may not have arrived
-     * yet at this point.
-     */
-    private fun startAppsFlyerEagerly(devKey: String) {
-        eagerAppsFlyerDevKey = devKey
-        val cachedRaw: String? = sharedPreferences(context).getString(APPSFLYER_CONFIG_KEY, null)
-        val cached: AppsFlyerInfo =
-            if (cachedRaw != null) parseAppsFlyerInfo(cachedRaw) else AppsFlyerInfo.EMPTY
-        val info = AppsFlyerInfo(
-            devKey = devKey,
-            isDebugMode = cached.isDebugMode,
-            isLoggingEnabled = cached.isLoggingEnabled,
-            web2AppSubscriptionIds = emptyList(),
-        )
-        Log.i(Constants.LOG_TAG, "Starting AppsFlyer eagerly with the devKey passed to setHost")
-        try {
-            appsFlyerManager.start(info, skipActivityCheck = true)
-        } catch (e: Throwable) {
-            Log.e(Constants.LOG_TAG, "Eager AppsFlyer start failed", e)
-        }
     }
 
     suspend fun setAdditionalUserData(
@@ -182,9 +116,6 @@ internal class StatisticService(private val context: Context) {
                 host = prefs.getString(HOSTNAME_KEY, null)
                 if (host == null) {
                     Log.e(Constants.LOG_TAG, "No hostname provided, initialization impossible")
-                    if (!appsFlyerInfoDeferred.isCompleted) {
-                        appsFlyerInfoDeferred.complete(AppsFlyerInfo.EMPTY)
-                    }
                     if (!clarityInfoDeferred.isCompleted) {
                         clarityInfoDeferred.complete(ClarityInfo.EMPTY)
                     }
@@ -225,7 +156,6 @@ internal class StatisticService(private val context: Context) {
                     }
                 }
 
-                scope.launch { fetchAndStartAppsFlyer(api) }
                 scope.launch { fetchAndStartClarity(api) }
 
                 try {
@@ -248,21 +178,6 @@ internal class StatisticService(private val context: Context) {
     }
 
     suspend fun await() = initialized.await()
-
-    suspend fun awaitAppsFlyerInfo(): AppsFlyerInfo = appsFlyerInfoDeferred.await()
-
-    fun appsFlyerConversionFlow(): SharedFlow<Bundle> = appsFlyerManager.conversionFlow
-
-    fun lastAppsFlyerConversionBundle(): Bundle? = appsFlyerManager.lastConversionBundle()
-
-    suspend fun awaitAppsFlyerConversion(timeoutMillis: Long): Bundle? =
-        withTimeoutOrNull(timeoutMillis) { appsFlyerManager.conversionFlow.first() }
-
-    fun logAppsFlyerEvent(eventName: String, params: Map<String, Any>?) =
-        appsFlyerManager.logEvent(eventName, params)
-
-    fun setAppsFlyerGdprConsent(hasGdpr: Boolean?) =
-        appsFlyerManager.setGdprConsent(hasGdpr)
 
     suspend fun awaitClarityInfo(): ClarityInfo = clarityInfoDeferred.await()
 
@@ -302,75 +217,6 @@ internal class StatisticService(private val context: Context) {
         val current = api ?: return
         scope.launch { updateAppInstance(current) }
     }
-
-    private suspend fun fetchAndStartAppsFlyer(api: StatisticServerAPI) {
-        val prefs = sharedPreferences(context)
-        val now = System.currentTimeMillis()
-        val cachedRaw: String? = prefs.getString(APPSFLYER_CONFIG_KEY, null)
-        val cachedAt: Long = prefs.getLong(APPSFLYER_CONFIG_UPDATED_AT_KEY, 0L)
-        val cacheFresh: Boolean = cachedRaw != null && now - cachedAt < REFRESH_INTERVAL_MILLIS
-
-        val info: AppsFlyerInfo = if (cacheFresh) {
-            Log.i(Constants.LOG_TAG, "AppsFlyer config loaded from cache (age=${now - cachedAt}ms)")
-            parseAppsFlyerInfo(cachedRaw)
-        } else {
-            try {
-                val raw = api.fetchAppsFlyerConfig(context.packageName)
-                // Cache the raw config (including an empty/disabled one) so we don't hit the
-                // backend again for 24h. An empty key is a valid, cacheable "disabled" status.
-                prefs.edit()
-                    .putString(APPSFLYER_CONFIG_KEY, raw)
-                    .putLong(APPSFLYER_CONFIG_UPDATED_AT_KEY, now)
-                    .apply()
-                parseAppsFlyerInfo(raw)
-            } catch (e: Exception) {
-                // Don't update the timestamp so the next run retries; fall back to the last
-                // known config if we have one, otherwise stay disabled.
-                Log.w(Constants.LOG_TAG, "Failed to fetch AppsFlyer config, falling back to cache/disabled", e)
-                if (cachedRaw != null) parseAppsFlyerInfo(cachedRaw) else AppsFlyerInfo.EMPTY
-            }
-        }
-
-        if (!appsFlyerInfoDeferred.isCompleted) {
-            appsFlyerInfoDeferred.complete(info)
-        }
-
-        if (appsFlyerManager.isInitialized) {
-            Log.i(Constants.LOG_TAG, "AppsFlyer already initialized eagerly from setHost")
-            val eagerKey = eagerAppsFlyerDevKey
-            if (!info.devKey.isNullOrEmpty() && eagerKey != null && info.devKey != eagerKey) {
-                Log.w(
-                    Constants.LOG_TAG,
-                    "AppsFlyer devKey from console differs from the one passed to setHost, " +
-                        "the setHost key stays in effect"
-                )
-            }
-            // Same as the normal path below: make sure appsflyerId reaches the server. Runs under
-            // the same semaphore as the initial update and is a no-op when nothing changed.
-            triggerUserUpdate()
-            return
-        }
-
-        if (info.devKey.isNullOrEmpty()) {
-            Log.i(Constants.LOG_TAG, "AppsFlyer not initialized: empty devKey")
-            return
-        }
-
-        try {
-            appsFlyerManager.start(info)
-            triggerUserUpdate()
-        } catch (e: Throwable) {
-            Log.e(Constants.LOG_TAG, "AppsFlyer start failed", e)
-        }
-    }
-
-    private fun parseAppsFlyerInfo(raw: String): AppsFlyerInfo =
-        try {
-            AppsFlyerInfo.fromJson(JSONObject(raw))
-        } catch (e: Exception) {
-            Log.w(Constants.LOG_TAG, "Failed to parse AppsFlyer config, defaulting to disabled", e)
-            AppsFlyerInfo.EMPTY
-        }
 
     private suspend fun fetchAndStartClarity(api: StatisticServerAPI) {
         val prefs = sharedPreferences(context)
@@ -509,7 +355,6 @@ internal class StatisticService(private val context: Context) {
         val st = sessionTracker.getFields()
         currentData.sessionLengthFirst = st["session_length_first"]
         currentData.tapsCountFirst30s = st["taps_count_first_30s"]?.toInt()
-        appsFlyerManager.getAppsFlyerUID()?.let { currentData.appsflyerId = it }
 
         if (currentData.toJson().toString() == savedData.toJson().toString()) {
             Log.i(Constants.LOG_TAG, "User data already updated")

@@ -2,11 +2,7 @@ package com.analytic.atribution.gb
 
 import android.os.Bundle
 import android.view.View
-import com.analytic.atribution.gb.appsflyer.AppsFlyerInfo
 import com.analytic.atribution.gb.clarity.ClarityInfo
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.UUID
@@ -22,41 +18,16 @@ import java.util.UUID
  */
 object GPAnalytic {
     /**
-     * Hot flow that emits each AppsFlyer conversion payload as a [Bundle]. Carries every
-     * entry from the AppsFlyer conversion map, untouched — apps read whichever keys they
-     * care about (`deep_link_value`, `deep_link_sub2`, `WebUserID`, etc.). Replays the
-     * most recent payload to new subscribers, including the cached payload from a previous
-     * process if present.
-     */
-    val appsFlyerConversionFlow: Flow<Bundle> = flow {
-        emitAll(Locator.resolve<StatisticService>().appsFlyerConversionFlow())
-    }
-
-    /**
      * Sets the hostname of the analytic server. Note that you have
      * 5 seconds to call this function, otherwise initialization process will be aborted.
      *
-     * Optionally initializes AppsFlyer immediately, see [appsFlyerKey].
-     *
      * @param host Hostname of the server. For example: `analytic.com`, `127.0.0.1`.
      * @param secure Whether to use secure protocols (https instead of http etc.)
-     * @param appsFlyerKey AppsFlyer dev key owned by the app. When provided, the AppsFlyer SDK is
-     * initialized right away — without waiting for the config request to the analytic server and
-     * without the launcher-activity check that the default flow applies (passing the key is an
-     * explicit opt-in by the app, so do not pass it in apps where another library may start the
-     * process on its own). Call [setHost] from `Application.onCreate`, before the first activity
-     * is created — otherwise the conversion callback is late again and there is no point in
-     * passing the key. The devKey from the admin console is ignored for this process; a mismatch
-     * is logged. [getAppsFlyerInfo] and [appsFlyerConversionFlow] behave as usual, i.e. the
-     * console config is still fetched — and it is fetched immediately rather than after the ~1s
-     * initialization delay, so [getAppsFlyerInfo] (and anything waiting on it, such as a
-     * web2app conversion listener reading `web2AppSubscriptionIds`) answers in tens of
-     * milliseconds. Call [setHost] from `Application.onCreate`, before the first activity.
      */
     @JvmOverloads
-    fun setHost(host: String, secure: Boolean = false, appsFlyerKey: String? = null) {
+    fun setHost(host: String, secure: Boolean = false) {
         scope.launch {
-            Locator.resolve<StatisticService>().setHost(host, secure, appsFlyerKey)
+            Locator.resolve<StatisticService>().setHost(host, secure)
         }
     }
 
@@ -85,10 +56,6 @@ object GPAnalytic {
      * events in the queue or more than 10 seconds passed from oldest event in the queue. Currently
      * there's no way to trigger flush externally.
      *
-     * The same event is also forwarded to AppsFlyer when the SDK is initialized
-     * (i.e. the console returned a non-empty `devKey` and the package check passed). When
-     * AppsFlyer is not initialized this side-effect is a no-op.
-     *
      * Note that all not custom events are managed by SDK
      * automatically, only use this for custom events like `screen_open`, `button_pressed` etc.
      *
@@ -104,11 +71,9 @@ object GPAnalytic {
         timestamp: Long? = null
     ) {
         val jsonObject = JSONObject()
-        val afParams = mutableMapOf<String, Any>()
         parameters?.keySet()?.forEach { key ->
             val value = parameters.get(key)
             jsonObject.put(key, value)
-            if (value != null) afParams[key] = value
         }
 
         val event = Event(
@@ -121,58 +86,6 @@ object GPAnalytic {
         scope.launch {
             val service = Locator.resolve<StatisticService>()
             service.enqueueEvent(event)
-        }
-    }
-
-    /**
-     * Returns the AppsFlyer configuration delivered by the analytics admin console. Suspends
-     * until the configuration has been fetched. If the fetch fails, returns
-     * [AppsFlyerInfo.EMPTY] (devKey null, empty subscription id list).
-     *
-     * Apps typically use this to read [AppsFlyerInfo.web2AppSubscriptionIds] and decide which
-     * keys to react to in the conversion broadcast. The library itself uses devKey,
-     * isDebugMode, and isLoggingEnabled to drive AppsFlyer SDK initialization.
-     */
-    suspend fun getAppsFlyerInfo(): AppsFlyerInfo {
-        return Locator.resolve<StatisticService>().awaitAppsFlyerInfo()
-    }
-
-    /**
-     * Returns the most recent AppsFlyer conversion payload as a [Bundle], or null if no
-     * conversion has been received yet. Useful for receivers that registered after the
-     * initial broadcast was emitted (e.g., on process restart).
-     */
-    suspend fun getLastAppsFlyerConversion(): Bundle? {
-        return Locator.resolve<StatisticService>().lastAppsFlyerConversionBundle()
-    }
-
-    /**
-     * Suspends until an AppsFlyer conversion payload is available and returns it, or returns null
-     * if none arrived within [timeoutMillis].
-     *
-     * Returns immediately when a payload is already known — including one cached from a previous
-     * process — so this is safe to call on every launch. Use it instead of a hand-rolled delay
-     * before deciding that there is no deep link: AppsFlyer resolves the conversion on its own
-     * server round trip, which on a first launch routinely takes several seconds and is unrelated
-     * to how early the SDK was initialized.
-     *
-     * Note that a conversion *failure* (AppsFlyer calling `onConversionDataFail`) does not cut the
-     * wait short — the call still returns null only after [timeoutMillis].
-     *
-     * @param timeoutMillis How long to wait. Defaults to 120 seconds.
-     */
-    suspend fun awaitAppsFlyerConversion(timeoutMillis: Long = 120_000): Bundle? {
-        return Locator.resolve<StatisticService>().awaitAppsFlyerConversion(timeoutMillis)
-    }
-
-    /**
-     * Forwards GDPR consent state to the AppsFlyer SDK. Pass `true` for GDPR-region users
-     * who have granted consent, `false` for GDPR-region users who declined, and `null` for
-     * non-GDPR users.
-     */
-    fun setAppsFlyerGdprConsent(hasGdpr: Boolean?) {
-        scope.launch {
-            Locator.resolve<StatisticService>().setAppsFlyerGdprConsent(hasGdpr)
         }
     }
 
@@ -290,8 +203,7 @@ object GPAnalytic {
      * Accepts only `"accepted"`, `"rejected"`, `"unknown"`. Other values are ignored with
      * a warning log. Defaults to `"unknown"` until set.
      *
-     * Independent of [setAppsFlyerGdprConsent] / [setClarityConsent], which forward consent
-     * to the respective SDKs.
+     * Independent of [setClarityConsent], which forwards consent to the Clarity SDK.
      */
     fun setGdprConsent(status: String) {
         scope.launch {

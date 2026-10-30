@@ -39,10 +39,6 @@ internal class StatisticServerAPI(
         }
     }
 
-    suspend fun fetchAppsFlyerConfig(packageName: String): String {
-        return fetchEncryptedConfig("/packages/$packageName/appsflyer_config")
-    }
-
     suspend fun fetchClarityConfig(packageName: String): String {
         return fetchEncryptedConfig("/packages/$packageName/clarity_config")
     }

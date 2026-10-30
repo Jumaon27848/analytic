@@ -1,4 +1,4 @@
-package com.analytic.atribution.gb.appsflyer
+package com.analytic.atribution.gb.clarity
 
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -12,7 +12,7 @@ import android.os.Bundle
  * Tracks whether the first activity created after the process starts is one of the host
  * app's launcher activities (declared with MAIN/LAUNCHER intent filters in the manifest).
  * Used to detect when the app was launched from a foreign process (for example, an ad
- * SDK's transparent activity) so AppsFlyer / Clarity initialization can be skipped.
+ * SDK's transparent activity) so Clarity initialization can be skipped.
  */
 internal class ActivityPackageWatcher(context: Context) {
 
