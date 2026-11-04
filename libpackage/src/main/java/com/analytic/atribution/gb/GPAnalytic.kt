@@ -23,11 +23,14 @@ object GPAnalytic {
      *
      * @param host Hostname of the server. For example: `analytic.com`, `127.0.0.1`.
      * @param secure Whether to use secure protocols (https instead of http etc.)
+     * @param facebookAppId Facebook App ID, used to read the Meta Install Referrer. Optional:
+     * `com.facebook.sdk.ApplicationId` from the manifest is used when present (and wins over this
+     * value, with a warning in the log if they differ).
      */
     @JvmOverloads
-    fun setHost(host: String, secure: Boolean = false) {
+    fun setHost(host: String, secure: Boolean = false, facebookAppId: String? = null) {
         scope.launch {
-            Locator.resolve<StatisticService>().setHost(host, secure)
+            Locator.resolve<StatisticService>().setHost(host, secure, facebookAppId)
         }
     }
 

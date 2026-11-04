@@ -63,6 +63,7 @@ internal class AppInstanceData(
     var sessionLengthFirst: Long? = null,
     var tapsCountFirst30s: Int? = null,
     var firebaseMessagingId: String? = null,
+    var metaInstallReferrers: JSONArray? = null,
     var hints: AppInstanceHints? = null,
 ) {
     companion object {
@@ -110,6 +111,7 @@ internal class AppInstanceData(
                 sessionLengthFirst = json.getOrNull("session_length_first"),
                 tapsCountFirst30s = json.getOrNull("taps_count_first_30s"),
                 firebaseMessagingId = json.getOrNull("firebase_messaging_id"),
+                metaInstallReferrers = json.getOrNull("meta_install_referrers"),
                 hints = null,
             )
         }
@@ -159,6 +161,7 @@ internal class AppInstanceData(
         jsonObject.put("session_length_first", sessionLengthFirst)
         jsonObject.put("taps_count_first_30s", tapsCountFirst30s)
         jsonObject.put("firebase_messaging_id", firebaseMessagingId)
+        jsonObject.put("meta_install_referrers", metaInstallReferrers)
         jsonObject.put("hints", hints?.toJson())
         return jsonObject
     }

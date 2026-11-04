@@ -34,6 +34,7 @@ internal class StatisticService(private val context: Context) {
         const val CURRENT_DATA_KEY = "data.current"
         const val HOSTNAME_KEY = "hostname"
         const val SECURE_KEY = "secure"
+        const val FACEBOOK_APP_ID_KEY = "facebook_app_id"
         const val AFFISE_CLICK_ID_KEY = "affise_click_id"
         const val AFFISE_PROMO_CODE_KEY = "affise_promo_code"
         const val WEB_CUSTOMER_ID = "web_customer_id"
@@ -56,11 +57,12 @@ internal class StatisticService(private val context: Context) {
     private var api: StatisticServerAPI? = null
     private var eventQueue: EventQueue? = null
 
-    fun setHost(host: String, secure: Boolean) {
+    fun setHost(host: String, secure: Boolean, facebookAppId: String?) {
         sharedPreferences(context)
             .edit()
             .putBoolean(SECURE_KEY, secure)
             .putString(HOSTNAME_KEY, host)
+            .putString(FACEBOOK_APP_ID_KEY, facebookAppId)
             .apply()
     }
 
@@ -336,6 +338,15 @@ internal class StatisticService(private val context: Context) {
         currentData.affisePromoCode = preferences.getString(AFFISE_PROMO_CODE_KEY, null)
         currentData.webCustomerId = preferences.getString(WEB_CUSTOMER_ID, null)
         if (currentData.referrer == null) currentData.referrer = getInstallReferrer(context)
+        if (currentData.metaInstallReferrers == null) {
+            // Stays null until something is found, so it's retried on the next update
+            // (e.g. if the Facebook App ID was not available yet).
+            val facebookAppId: String? =
+                resolveFacebookAppId(context, preferences.getString(FACEBOOK_APP_ID_KEY, null))
+            if (facebookAppId != null) {
+                currentData.metaInstallReferrers = getMetaInstallReferrers(context, facebookAppId)
+            }
+        }
 
         currentData.connectionType = getConnectionType(context)
         currentData.screenResolution = getScreenResolution()
