@@ -5,5 +5,5 @@ internal object Constants {
     const val LOG_TAG = "StatisticServerAPI"
     const val LOCAL_EVENT_LIMIT = 1000
     // Keep in sync with libpackage/build.gradle 'version'.
-    const val LIB_VERSION = "3.0.0"
+    const val LIB_VERSION = "3.1.0"
 }
